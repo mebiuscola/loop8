@@ -1,0 +1,15 @@
+:root{color-scheme:light;font-family:system-ui,"Microsoft YaHei",sans-serif;color:#222e2b;background:#eeeee7}body{margin:0}header{padding:24px 32px;border-bottom:1px solid #dce1d6;background:#fefdf7}header span{font-size:13px;color:#63806d}h1{font-size:23px;margin:8px 0;overflow-wrap:anywhere}header p{font-size:14px;margin:8px 0}a{color:#24654d}main{display:grid;grid-template-columns:minmax(280px,0.8fr) minmax(400px,1.2fr);gap:20px;padding:24px}section{min-width:0;background:#fefdf7;border:1px solid #dce1d6;border-radius:10px;padding:20px}h2{font-size:16px;margin:0 0 16px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:16px/1.8 Georgia,"Microsoft YaHei",serif;color:#26362d}.note{font-size:13px;line-height:1.6;color:#6b756c}details{margin-top:24px}summary{cursor:pointer}iframe{width:100%;height:78vh;border:1px solid #e1e4dc;background:#eee}@media(max-width:850px){main{grid-template-columns:1fr;padding:12px}header{padding:20px}iframe{height:65vh}}
+
+.pdf-tools{display:flex;gap:12px;align-items:center}.pdf-tools button{padding:7px 12px;border:1px solid #cdd8cb;border-radius:6px;background:#f6f8f2;color:#254c39;cursor:pointer}.pdf-tools button:disabled{opacity:.45}.pdf-tools input{width:65px;padding:6px;border:1px solid #cdd8cb;border-radius:5px}.pdf-scroll{height:74vh;overflow:auto;background:#e8e8e3;padding:10px}canvas{display:block;margin:auto;background:#fefdf7;max-width:100%}#pdf-status{font-size:13px;color:#627266}
+
+:root{color:#222e2b;background:#eeeee7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI","Microsoft YaHei",sans-serif}
+header{background:#fefdf7;border-color:#d7d9cf}
+header span,.note,#pdf-status{color:#52615b}
+h1,h2{letter-spacing:-.02em}
+section{border-color:#d7d9cf;border-radius:14px}
+pre{font:inherit;line-height:1.75;color:#222e2b}
+a{color:#285e56}
+.pdf-tools{flex-wrap:wrap}
+.pdf-tools button,.pdf-tools input{background:#e8ebe1;border-color:#c7cfc3;border-radius:8px;color:#222e2b;font:inherit}
+.pdf-scroll{background:#e6e9df;border-radius:10px}
+:is(button,a,summary,input):focus-visible{outline:2px solid #28665f;outline-offset:3px}

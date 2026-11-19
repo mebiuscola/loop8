@@ -1,0 +1,15 @@
+{
+  "name": "@aiden0z/pptx-renderer",
+  "version": "1.4.0",
+  "integrity": "sha512-GUQbdJCYjTfXkJWtSgo5pIYXZYQjOQLlnjfRYE5ycpWgPa8rIK711wQa0kAl71H++vYnFYUp9fjQkKB8K/6ShA==",
+  "url": "https://registry.npmjs.org/@aiden0z/pptx-renderer/-/pptx-renderer-1.4.0.tgz",
+  "localPatch": {
+    "description": "Preserve authored frame/row geometry, Office table spacing and border metrics; inherit resolved paragraph fonts and bullet gutters; fit horizontal normAutofit text at fixed bounds.",
+    "source": "table-layout.mjs",
+    "rebuild": "node scripts/build-pptx-renderer.mjs",
+    "sha256": "d007ece471f816be620628b0d764774e8a822e19a3e1543cf43f0829d41d17be",
+    "textLayoutSha256": "58493ab9e99d3d023a7740c7749482039798a91e7918061b0523fa343c5d7b2f",
+    "tableLayoutSha256": "13ae5eed46264505853b143751b7cf3bc901295cc957b9819ec854e494b9577a"
+  },
+  "upstreamBrowserSha256": "eed96db79a8300ef66a57e8a5f4f2c06a5cb78ac30b7eecd5df921c05ac5069b"
+}
