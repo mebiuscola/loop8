@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {spawn} from 'node:child_process';
 import {mkdtemp,rm,readFile,stat} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-test('local workflow: parse recovery, immutable originals, complete outputs, QA, failed rerun preserves output',async()=>{
+test('local workflow: parse recovery, immutable originals, complete outputs, QA, failed rerun preserves output',async t=>{
  const temp=await mkdtemp(path.join(os.tmpdir(),'classroom-check-'));let failCoverage=false,calls=0,contextActive=0,contextPeak=0;
  const mock=http.createServer(async(req,res)=>{let bytes='';for await(const c of req)bytes+=c;if(req.url==='/parse'){assert.match(bytes,/Classroom connection test/);res.setHeader('content-type','application/json');return res.end(JSON.stringify({markdown:'Classroom connection test'}));}if(req.headers.authorization==='Bearer invalid'){res.writeHead(401);return res.end('{}');}const b=JSON.parse(bytes);calls++;const system=b.messages[0].content,user=b.messages[1].content;let content;
   if(system.includes('Deep Dive issue plan'))content=JSON.stringify({centralQuestion:'How does comparison change the argument?',issues:[{question:'How does comparison change the argument?',searchQueries:['comparison','distant reading','opacity']}]});
@@ -54,6 +55,30 @@ test('local workflow: parse recovery, immutable originals, complete outputs, QA,
   assert.equal((await call(`/api/projects/${id}/ask`,{question:'学生的问题是什么？'})).status,200);
   await call(`/api/projects/${id}/process`,{mode:'week'});state=await wait();assert.equal(state.status,'done',state.error);
   failCoverage=true;await call(`/api/projects/${id}/process`,{fresh:true});state=await wait();assert.equal(state.status,'error');assert.match(state.error,/覆盖/);assert.equal((await call(`/api/projects/${id}/output?name=Class_Script_Bilingual.md`)).value,script);
+  failCoverage=false;
+  const sessionId=state.sessions[0].id;
+  const retry=await call(`/api/projects/${id}/process`,{mode:'session',sessionId});
+  assert.equal(retry.status,202);state=await wait();
+  assert.equal(state.tasks['script:'+sessionId].status,'complete',state.error);
+  const download=await fetch(base+`/api/projects/${id}/output?scope=${sessionId}&name=Class_Script_Bilingual.md&download=1`);
+  assert.equal(download.status,200);assert.match(download.headers.get('content-disposition'),/attachment/);
+  assert.equal(await download.text(),(await call(`/api/projects/${id}/output?scope=${sessionId}&name=Class_Script_Bilingual.md`)).value);
+  await t.test('reopening the transcript after reload shows the retried output',async t=>{
+   try{await browserExecutable();}catch{return t.skip('Requires Edge / Chrome');}
+   const ui=await launchRenderer(base,{});
+   const waitFor=async expression=>{
+    for(let i=0;i<150;i++){try{if(await ui.evaluate(expression))return;}catch{}await sleep(50);}
+    assert.fail('Browser did not reach '+expression);
+   };
+   try{
+    await ui.evaluate("setTimeout(()=>location.href='/',0);true");
+    await waitFor("document.querySelector('#workspace')?.hidden===false");
+    await ui.evaluate("window.beforeReload=true;setTimeout(()=>location.reload(),0);true");
+    await waitFor("!window.beforeReload&&document.querySelector('#workspace')?.hidden===false");
+    await ui.evaluate("document.querySelector('#surface-transcripts').click();true");
+    await waitFor("document.body.innerText.includes('Let us discuss opacity.')&&document.querySelector('#process').textContent.includes('更新')");
+   }finally{await ui.close();}
+  });
   assert((await stat(path.join(temp,'classes',id,'Output','Weekly_Deep_Dive.md'))).size>0);
  }finally{child.kill();await new Promise(r=>child.once('exit',r));await new Promise(r=>mock.close(r));await rm(temp,{recursive:true,force:true});}
 });
