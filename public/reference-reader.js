@@ -4,16 +4,25 @@ export function createReferenceReader({api,project,endpoint,onContext,onError}){
  const scroll=$('#reference-scroll'),host=$('#reference-paragraphs');
  let visible=false,id='',key='',data=null,page=0,pdf=null,pdfTask=null,ticket=0,timer,scrollFrame,observer;
  const rows=new Map(),near=new Set(),renders=new Map(),rendered=new Map(),previewErrors=new Map();
- const positions=new Map(),selections=new Map();
+ const selectionKey=()=> 'classroom-reference-file:'+project()?.id;
+ function savedPosition(){
+  try{
+   const value=JSON.parse(sessionStorage.getItem(positionKey()));
+   if(Number.isInteger(value?.page)&&value.page>=0&&Number.isFinite(value.offset))return value;
+  }catch{}
+  return {page:0,offset:0};
+ }
  const files=()=>project()?.files.filter(f=>f.role==='reading')||[];
  const file=()=>files().find(f=>f.id===id);
- const positionKey=()=>JSON.stringify([project()?.id,id]);
+ const positionKey=()=> 'classroom-reference-position:'+JSON.stringify([project()?.id,id]);
  const count=()=>pdf?.numPages||Math.max(1,...(data?.paragraphs||[]).map(p=>(p.pageIndex??0)+1));
  function remember(){
   if(!id||!data)return;
   const row=rows.get(page);
-  positions.set(positionKey(),{page,offset:row?scroll.getBoundingClientRect().top-row.getBoundingClientRect().top:0});
-  selections.set(project()?.id,id);
+  if(!row||!scroll.clientHeight)return;
+  const offset=scroll.getBoundingClientRect().top-row.getBoundingClientRect().top;
+  sessionStorage.setItem(positionKey(),JSON.stringify({page,offset}));
+  sessionStorage.setItem(selectionKey(),id);
  }
  function context(){return file()?{file:file(),focus:{kind:'page',sourceId:id,pageIndex:page},pageAvailable:!!data?.paragraphs.some(p=>p.pageIndex===page),label:file().name+' · PDF 第 '+(page+1)+' 页'}:null;}
  function stopPreview(){
@@ -182,7 +191,7 @@ export function createReferenceReader({api,project,endpoint,onContext,onError}){
  async function load(){
   const mine=++ticket;releaseDocument();data=null;profile.hidden=true;profile.value='';
   host.textContent='正在读取参考文献…';
-  const restore=positions.get(positionKey())||{page:0,offset:0};
+  const restore=savedPosition();
   try{
    const result=await fetchProgress();if(mine!==ticket)return;
    data=result;page=restore.page;$('#reference-original').href=endpoint('source')+'?id='+encodeURIComponent(id);
@@ -210,7 +219,7 @@ export function createReferenceReader({api,project,endpoint,onContext,onError}){
  let progressKey='',progressRequest=0;
  async function sync(){
   if(!visible)return;
-  const p=project(),list=files(),saved=selections.get(p?.id);
+  const p=project(),list=files(),saved=sessionStorage.getItem(selectionKey());
   if(!list.some(f=>f.id===id))id=list.find(f=>f.id===saved)?.id||list[0]?.id||'';
   const select=$('#reference-file'),items=JSON.stringify(list.map(f=>[f.id,f.name]));
   if(select.dataset.items!==items){select.replaceChildren(...list.map(f=>new Option(f.name,f.id)));select.dataset.items=items;}

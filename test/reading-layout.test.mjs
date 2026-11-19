@@ -148,6 +148,16 @@ test('compact reading layout gives documents viewport space, resizes actual sepa
   await wait("!!document.querySelector('.reference-page-preview canvas')");
   assert(await ui.evaluate("(()=>{const pane=document.querySelector('.reference-translation'),h=pane.querySelector('.reference-pane-heading'),p=pane.querySelector('.bilingual-paragraph');return Math.abs(h.getBoundingClientRect().left-p.getBoundingClientRect().left)<1;})()"),'reference title and body share the same text edge');
   if(process.env.CLASSROOM_LAYOUT_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_LAYOUT_EVIDENCE,'Reference-toolbar.png'),await ui.screenshot(1600,1000));
+  await ui.evaluate("document.querySelector('#reference-next').click();true");
+  await wait("document.querySelector('#reference-page').value==='2'");
+  await ui.evaluate("document.querySelector('#surface-overview').click();true");
+  await wait("!document.querySelector('#course-overview').hidden");
+  await ui.evaluate("document.querySelector('[data-file-id=ppt] .file-title').click();true");
+  await wait("document.querySelector('#material-courseware').classList.contains('selected')&&document.querySelector('#reader-page').value==='1'");
+  await ui.evaluate("document.querySelector('#material-reference').click();true");
+  await wait("!document.querySelector('#reference-reader').hidden&&document.querySelector('#reference-page').value==='2'");
+  await ui.evaluate("window.beforeReferenceReload=true;setTimeout(()=>location.reload(),0);true");
+  await wait("!window.beforeReferenceReload&&document.querySelector('.reference-page-preview canvas')&&document.querySelector('#reference-page').value==='2'");
 
   await ui.evaluate("(async()=>{const {watchAcpWorkflow}=await import('/acp-workflow.js');window.quietNotices=[];window.quietJob={status:'running',stage:'读取中'};watchAcpWorkflow('quiet-test',{api:async()=>window.quietJob,post:async()=>({}),notice:text=>window.quietNotices.push(text)});return true;})()");
   await wait("!!document.querySelector('.acp-workflow')");
