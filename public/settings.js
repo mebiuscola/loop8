@@ -35,14 +35,14 @@ export function initSettings({api,post,notice}){
  };
  function labelField(host,label,key,value,{type='text',choices,change,required=false}={}){const wrap=el('label',null,'settings-field'),text=el('span',label),input=el(choices?'select':'input');input.dataset.field=key;input.name=key;if(choices){for(const [v,t] of choices){const o=el('option',t);o.value=v;input.append(o);}}else input.type=type;
   if(type==='checkbox'){input.checked=!!value;wrap.classList.add('check');wrap.append(input,text);}else{input.value=value??'';wrap.append(text,input);}input.required=required;input.oninput=()=>{change?.(type==='checkbox'?input.checked:type==='number'?Number(input.value):input.value);dirty.add(section==='models'?(key==='defaultProfileId'?'default':'model:'+selected):section);status.textContent='有未保存的修改';};host.append(wrap);return input;}
- function modelOptions(task){return [['','未选择'],...saved.modelProfiles.filter(p=>task!=='pptPreview'||plan(p)).map(p=>[p.id,p.name+' · '+providerLabel(p)])];}
+ function modelOptions(){return [['','未选择'],...saved.modelProfiles.map(p=>[p.id,p.name+' · '+providerLabel(p)])];}
  function render(){if(!saved)return;for(const b of nav.children){b.classList.toggle('selected',b.dataset.settingsSection===section);b.setAttribute('aria-current',b.dataset.settingsSection===section?'page':'false');}body.replaceChildren();status.textContent=(section==='models'?(dirty.has('default')||dirty.has('model:'+selected)):dirty.has(section))?'有未保存的修改':'';save.textContent=section==='models'?'保存连接':'保存当前设置';save.hidden=false;
   if(section==='models')renderModels();else if(section==='routes')renderRoutes();else renderOther();
  }
  function renderModels(){
   body.append(el('h3','AI 模型'),el('p','添加连接，选一个作为默认模型。需要时再为个别功能指定其他模型。','settings-intro'));
   const defaultRow=el('div',null,'settings-default'),impact=el('p',null,'settings-note');
-  const inherited=()=>Object.keys(TASKS).filter(t=>t!=='pptPreview'&&!saved.modelRoutes[t]);
+  const inherited=()=>Object.keys(TASKS).filter(t=>!saved.modelRoutes[t]&&(t!=='pptPreview'||!saved.modelRoutes.pptRecognition));
   function showImpact(){impact.textContent=defaultId!==saved.defaultProfileId?'将切换 '+inherited().map(t=>TASKS[t]).join('、')+'。已有单项分配继续优先。':'';impact.hidden=!impact.textContent;}
   const picker=labelField(defaultRow,'全局默认模型','defaultProfileId',defaultId,{choices:modelOptions(),change:v=>{defaultId=v;showImpact();}});picker.id='default-model';showImpact();
   defaultRow.append(button('保存默认模型',async()=>{try{const affected=inherited().length;await persist({section:'models',defaultProfileId:defaultId});dirty.delete('default');showImpact();status.textContent='默认模型已保存，'+affected+' 个沿用默认的功能将使用它。';}catch(e){status.textContent=e.message;}}));body.append(defaultRow,impact);
@@ -185,7 +185,7 @@ export function initSettings({api,post,notice}){
  function renderRoutes(){
   body.append(el('h3','功能分配'),el('p','每项功能可使用默认模型或单独指定。最终使用的模型显示在右侧。','settings-intro'));
   for(const [group,tasks] of GROUPS){body.append(el('h4',group));const table=el('table',null,'settings-routes');const head=el('tr');for(const t of ['功能','选择方式','实际使用'])head.append(el('th',t));table.append(head);
-   for(const task of tasks){const row=el('tr'),choice=el('td'),effective=el('td',name(routes[task]||(task==='pptPreview'?'':defaultId)));row.append(el('td',TASKS[task]),choice,effective);const select=labelField(choice,TASKS[task]+'使用的模型',task,routes[task]||'',{choices:[['',task==='pptPreview'?'未分配':'使用默认模型'],...modelOptions(task).slice(1)],change:v=>{routes[task]=v;effective.textContent=name(v||(task==='pptPreview'?'':defaultId));}});select.dataset.task=task;row.dataset.taskRow=task;table.append(row);}body.append(table);}
+   for(const task of tasks){const row=el('tr'),choice=el('td'),effective=el('td',name(routes[task]||(task==='pptPreview'?routes.pptRecognition||defaultId:defaultId)));row.append(el('td',TASKS[task]),choice,effective);const select=labelField(choice,TASKS[task]+'使用的模型',task,routes[task]||'',{choices:[['',task==='pptPreview'?'跟随课件识别':'使用默认模型'],...modelOptions().slice(1)],change:v=>{routes[task]=v;if(task==='pptRecognition'&&!routes.pptPreview)body.querySelector('[data-task-row=pptPreview] td:last-child').textContent=name(v||defaultId);effective.textContent=name(v||(task==='pptPreview'?routes.pptRecognition||defaultId:defaultId));}});select.dataset.task=task;row.dataset.taskRow=task;table.append(row);}body.append(table);}
   body.append(el('h4','文献 AI 补救的备用模型'),el('p','仅用于文献识别失败后的备用步骤。ChatGPT 订阅与其他连接之间由你手动切换。','settings-note'));
   labelField(body,'启用文献备用模型','fallbackEnabled',fallbackEnabled,{type:'checkbox',change:v=>fallbackEnabled=v});labelField(body,'备用模型','fallbackProfileId',fallback,{choices:modelOptions(),change:v=>fallback=v});
  }

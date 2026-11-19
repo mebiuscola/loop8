@@ -11,10 +11,10 @@ test('editor migration preserves every effective legacy model, inherited key, we
  for(const task of Object.keys(MODEL_TASKS)){const old=resolveModel(legacy,task),next=resolveModel(s,task);for(const key of ['baseUrl','apiKey','model'])assert.equal(next[key],old[key],task+' '+key);}
  assert(s.fallbackProfileId);assert.equal(s.modelProfiles.find(p=>p.id===s.fallbackProfileId).apiKey,'rescue-secret');
 });
-test('ACP can be the default for existing tasks, overrides win, and trials require explicit assignment',()=>{
+test('ACP can be the default for existing tasks, overrides win, and page trials inherit recognition',()=>{
  const s=migrateModelSettings(legacy),p={id:'acp',name:'ACP',provider:'antigravity-acp',model:'account-model',acpEntry:'standalone',acpExecutable:'C:\\official\\agy_acp_server.exe'};s.modelProfiles.push(p);s.defaultProfileId=p.id;s.modelRoutes={};validateModelRouting(s);
- for(const task of Object.keys(MODEL_TASKS).filter(task=>task!=='pptPreview')){const actual=resolveModel(s,task);assert.equal(actual.provider,'antigravity-acp');assert.equal(actual.model,'account-model');assert.equal(actual.apiKey,undefined);assert.equal(actual.baseUrl,undefined);}
- assert.equal(resolveModel(s,'pptPreview').model,'');assert.throws(()=>validateModelRouting({...s,modelRoutes:{pptPreview:p.id}}),/ChatGPT/);
+ for(const task of Object.keys(MODEL_TASKS)){const actual=resolveModel(s,task);assert.equal(actual.provider,'antigravity-acp');assert.equal(actual.model,'account-model');assert.equal(actual.apiKey,undefined);assert.equal(actual.baseUrl,undefined);}
+ assert.doesNotThrow(()=>validateModelRouting({...s,modelRoutes:{pptPreview:p.id}}));
  s.modelRoutes.pptTranslation='special';assert.equal(resolveModel(s,'pptTranslation').model,'special');assert.equal(resolveModel(s,'pptExplanation').model,'account-model');p.model='';assert.equal(resolveModel(s,'qa').model,'');s.defaultProfileId='';assert.equal(resolveModel(s,'context').model,'');
 });
 test('generated ACP requests require an explicit observed continuation; stopping aborts pending workflow requests',async()=>{

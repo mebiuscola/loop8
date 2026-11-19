@@ -8,9 +8,10 @@ export function chatgptUsageLink(){
 export function acpPanel(){const host=element('section');host.className='acp-interaction';host.setAttribute('aria-label','Antigravity 交互状态');return host;}
 export async function observeAcpJob({api,post,id,host,transport='acp',showText=true,onProgress=()=>{}}){
  const owningDialog=host.closest('dialog');
- const chatgpt=transport==='chatgpt',jobsUrl=chatgpt?'/api/chatgpt/jobs/':'/api/acp/jobs/';
+ const chatgpt=transport==='chatgpt',jobsUrl=transport==='preview'?'/api/preview/jobs/':chatgpt?'/api/chatgpt/jobs/':'/api/acp/jobs/';
+ if(transport==='preview')host.setAttribute('aria-label','模型请求状态');
  if(chatgpt)host.setAttribute('aria-label','ChatGPT 订阅请求状态');
- const heading=element('div'),status=element('span',chatgpt?'准备 ChatGPT 请求…':'连接官方 Antigravity…'),cancel=element('button','停止'),preview=element('div'),permission=element('div'),login=element('div');
+ const heading=element('div'),status=element('span',transport==='preview'?'准备模型请求…':chatgpt?'准备 ChatGPT 请求…':'连接官方 Antigravity…'),cancel=element('button','停止'),preview=element('div'),permission=element('div'),login=element('div');
  heading.className='acp-progress';status.setAttribute('role','status');cancel.type='button';heading.append(status,cancel);preview.className='acp-preview';permission.className='acp-permission';login.className='acp-login-actions';host.replaceChildren(heading,login,preview,permission);
  if(chatgpt){
   const usage=element('div');usage.className='acp-login-actions';

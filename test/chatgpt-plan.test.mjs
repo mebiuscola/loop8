@@ -140,5 +140,5 @@ test('ChatGPT plan can be the global default and per-task overrides still win',(
  const overridden={...defaulted,modelProfiles:[...settings.modelProfiles,{id:'api',name:'API',provider:'api',model:'other',baseUrl:'https://example.test',apiKey:'fixture'}],modelRoutes:{classroom:'api'}};
  assert.doesNotThrow(()=>validateModelRouting(overridden));
  assert.equal(resolveModel(overridden,'classroom').provider,'api');
- assert.equal(resolveModel(overridden,'pptPreview').model,'');
+ assert.equal(resolveModel(overridden,'pptPreview').model,'fixture');
 });

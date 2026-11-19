@@ -73,6 +73,22 @@ test('real isolated browser renders PPTX and PDF, sends page images, imports val
   await api(url+'/ai-partial-import',{sourceId:partial.id,confirm:true});const accepted=await api(url+'/analysis?source='+partial.id);assert.deepEqual(accepted.coverage.missing,[2]);assert.equal(accepted.pages[1].status,'unreadable');
   const beforeRetry=calls;await api(url+'/ai-parse',{sourceId:partial.id,retryFailed:true});await waitFile(partial.id);assert.equal(calls-beforeRetry,3);assert.equal(requests.filter(r=>r.source==='partial.pdf'&&r.page===1).length,1);
 
+  const editor=await api('/api/settings/editor');
+  const profile=editor.modelProfiles.find(item=>item.model==='mock-vision');
+  assert(profile);
+  await api('/api/settings/editor',{section:'routes',modelRoutes:{...editor.modelRoutes,pptPreview:profile.id}});
+  const preview=await api(url+'/ppt-page-preview',{sourceId:p.files[0].id,pageIndex:1});
+  assert.equal(preview.transport,'preview');
+  let job;
+  for(let i=0;i<200;i++){
+   job=await api('/api/preview/jobs/'+preview.id);
+   if(job.status!=='running')break;
+   await sleep(50);
+  }
+  assert.equal(job.status,'success',job.message);
+  assert.equal(requests.at(-1).model,'mock-vision');
+  assert.equal(requests.at(-1).page,2);
+  assert.equal(await readFile(reportFile,'utf8'),savedReport);
   await api(url+'/ai-cache-clear',{sourceId:p.files[0].id});assert.equal((await api(url)).files[0].parseStatus,'ready');
  }finally{child.kill();await new Promise(r=>child.once('exit',r));await new Promise(r=>mock.close(r));await rm(temp,{recursive:true,force:true});}
 });

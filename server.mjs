@@ -76,6 +76,7 @@ const active=new Set(),asking=new Map(),requestLocks=new Set(),mineruJobs=new Ma
 const acpJobs=interactiveJobs({autoApprove:true,abandonMs:0});
 const chatgptPlan=createChatGPTPlan({data:DATA});
 setChatGPTPlan(chatgptPlan);
+const previewJobs=interactiveJobs({label:'API',starting:'准备单页试解析'});
 const chatgptJobs=interactiveJobs({label:'ChatGPT',starting:'准备 ChatGPT 请求'});
 const chatgptBatchJobs=interactiveJobs({label:'ChatGPT',starting:'准备 ChatGPT 生成任务'});
 const usesChatGPT=profiles=>profiles.some(profile=>profile.provider==='chatgpt-plan');
@@ -85,7 +86,7 @@ async function checkModelConnections(profiles){
  }
  if(usesChatGPT(profiles)&&!(await chatgptPlan.status()).connected)throw Error('请先在模型设置中连接 ChatGPT 订阅。');
 }
-function chatgptInteraction(job,model){
+function modelJobInteraction(job,model){
  const status=(phase,text)=>job.onUpdate({sessionUpdate:'status',phase,text,modelLabel:model},'');
  return {signal:job.signal,status,onRequest:()=>status('submitted','已发送，等待首段正文'),
   onText:text=>job.onUpdate({sessionUpdate:'status',phase:'streaming',text:'正在接收正文',modelLabel:model},text)};
@@ -293,8 +294,8 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/api/chatgpt/login'&&method==='POST')return respond(res,200,await chatgptPlan.start({reconsent:(await payload(req)).reconsent===true}));
   if(url.pathname==='/api/chatgpt/disconnect'&&method==='POST')return respond(res,200,await chatgptPlan.disconnect());
   if(url.pathname==='/api/chatgpt/models'&&method==='GET')return respond(res,200,await chatgptPlan.models());
-  if(parts[0]==='api'&&parts[1]==='chatgpt'&&parts[2]==='jobs'&&parts[3]){
-   const jobs=chatgptBatchJobs.has(parts[3])?chatgptBatchJobs:chatgptJobs;
+  if(parts[0]==='api'&&['chatgpt','preview'].includes(parts[1])&&parts[2]==='jobs'&&parts[3]){
+   const jobs=parts[1]==='preview'?previewJobs:chatgptBatchJobs.has(parts[3])?chatgptBatchJobs:chatgptJobs;
    if(method==='GET'&&parts.length===4)return respond(res,200,jobs.get(parts[3]));
    if(method==='POST'&&parts.length===5&&parts[4]==='cancel')return respond(res,200,jobs.cancel(parts[3]));
   }
@@ -323,7 +324,7 @@ const server=http.createServer(async(req,res)=>{
     if(!['ai','text','json','vision'].includes(b.kind))throw Error('请使用 ChatGPT 的独立登录和模型列表按钮。');
     if(chatgptJobs.busy)throw Error('已有 ChatGPT 请求正在进行，请等待完成或停止。');
     return respond(res,202,{...chatgptJobs.start(async job=>{
-     const interaction=chatgptInteraction(job,selected.model);
+     const interaction=modelJobInteraction(job,selected.model);
      const message=await testConnection(b.kind,selected,text=>interaction.status('testing',text),job.signal,interaction);
      return {message};
     }),transport:'chatgpt'});
@@ -410,18 +411,20 @@ const server=http.createServer(async(req,res)=>{
     if(await materialCommitPending(dir))throw Error('材料结果尚未提交完成，请重启软件完成恢复后再删除。');
     return respond(res,200,await deleteMaterial(p,b.sourceId,dir,putClass));
    }
-   if(action==='chatgpt-ppt-page'&&method==='POST'){
+   if(['ppt-page-preview','chatgpt-ppt-page'].includes(action)&&method==='POST'){
     editable(id);
     if(await materialCommitPending(dir))throw Error('材料结果正在提交，请稍后重试。');
     const b=await payload(req),file=p.files.find(item=>item.id===b.sourceId&&item.role==='ppt');
     if(!file||!Number.isSafeInteger(b.pageIndex)||b.pageIndex<0)throw Error('请先选择一页有效的课件。');
     const s=await config(),selected=resolveModel(s,'pptPreview');
-    if(selected.provider!=='chatgpt-plan'||!selected.model||selected.visionEnabled===false)throw Error('请在功能分配中为「单页 PPT 试解析」选择允许图片输入的 ChatGPT 订阅模型。');
-    if(chatgptJobs.busy)throw Error('已有 ChatGPT 请求正在进行，请等待完成或停止。');
+    await checkModelConnections([selected]);
+    if(selected.visionEnabled===false)throw Error('单页 PPT 试解析需要图片输入，请在该模型设置中启用或选择支持图片的模型。');
+    const transport=selected.provider==='chatgpt-plan'?'chatgpt':selected.provider==='antigravity-acp'?'acp':'preview';
+    if(transport==='chatgpt'&&chatgptJobs.busy)throw Error('已有 ChatGPT 请求正在进行，请等待完成或停止。');
     active.add(id);
     try{
-     const job=chatgptJobs.start(async job=>{
-      const interaction=chatgptInteraction(job,selected.model);
+     const work=async job=>{
+      const interaction={...job,...modelJobInteraction(job,selected.model)};
       try{
        interaction.status('preparing','准备当前页原图和原生文本');
        const {seed,bytes,sourceHash:hash,renderKey}=await pageCache.page(dir,file,s,{origin:url.origin,index:b.pageIndex,signal:job.signal});
@@ -432,8 +435,9 @@ const server=http.createServer(async(req,res)=>{
        inspectRecognition(page,seed,renderKey);
        return {message:'单页校验通过 · 试解析',page:readerPage(page,file,hash),warnings:page.uncertainties};
       }finally{active.delete(id);}
-     });
-     return respond(res,202,{chatgptJobId:job.id});
+     };
+     const job=transport==='acp'?startAcpWorkflow(work):transport==='chatgpt'?chatgptJobs.start(work):previewJobs.start(work);
+     return respond(res,202,{id:job.id,transport,...(transport==='chatgpt'?{chatgptJobId:job.id}:{})});
     }catch(error){active.delete(id);throw error;}
    }
    if(action==='ai-parse'&&method==='POST'){
@@ -605,7 +609,7 @@ const server=http.createServer(async(req,res)=>{
      try{
       if(chatgptJobs.busy)throw Error('已有 ChatGPT 请求正在进行，请等待完成或停止。');
       const job=chatgptJobs.start(async job=>{
-       try{return await ask(p,b.question,settings,{scope,focus,...chatgptInteraction(job,selected.model)});}
+       try{return await ask(p,b.question,settings,{scope,focus,...modelJobInteraction(job,selected.model)});}
        finally{pending.delete(key);if(!pending.size)asking.delete(id);}
       });
       return respond(res,202,{chatgptJobId:job.id});
@@ -657,5 +661,5 @@ server.requestTimeout=0;
 const port=Number(process.env.PORT||4317);
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`Port ${port} is already in use. Close the existing app or set PORT to another port.`:e.message);process.exitCode=1;});
 server.requestTimeout=30*60*1000;
-for(const event of ['SIGINT','SIGTERM'])process.once(event,async()=>{const guard=setTimeout(()=>process.exit(0),4000);guard.unref();await Promise.all([acpJobs.close(),chatgptJobs.close(),chatgptBatchJobs.close()]);await acpRuntime.disconnect();process.exit(0);});
+for(const event of ['SIGINT','SIGTERM'])process.once(event,async()=>{const guard=setTimeout(()=>process.exit(0),4000);guard.unref();await Promise.all([previewJobs.close(),acpJobs.close(),chatgptJobs.close(),chatgptBatchJobs.close()]);await acpRuntime.disconnect();process.exit(0);});
 server.listen(port,'127.0.0.1',()=>{const address=`http://127.0.0.1:${server.address().port}`;console.log(`Classroom Local: ${address}\nKeep this window open. Ctrl+C to stop.\nData: ${DATA}`);if(process.argv.includes('--open')&&process.platform==='win32')spawn('explorer.exe',[address],{windowsHide:true,stdio:'ignore'});});

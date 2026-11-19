@@ -29,8 +29,8 @@ for(const [index,toolbar] of readingToolbars.entries()){
  if(!index){
   more.querySelector('summary').textContent='更多';
   content.prepend($('.continuous-tools'),...$('.reader-display').querySelectorAll(':scope > label'),$('#reading-focus'),$('#reader-generation'));
-  const trial=document.createElement('button');trial.type='button';trial.textContent='用 ChatGPT 试解析本页';
-  trial.onclick=()=>{more.open=false;previewChatGPTPage();};
+  const trial=document.createElement('button');trial.type='button';trial.textContent='试解析本页';
+  trial.onclick=()=>{more.open=false;previewPptPage();};
   content.append(trial);
   $('.reader-display').remove();
  }else content.append($('#reference-actions'),$('#reference-original'));
@@ -596,7 +596,7 @@ async function showAIResults(f){
   $('#ai-results-accept').hidden=data.requiresComplete||!data.missing.length;$('#ai-results-accept').disabled=current.files.some(f=>f.aiParse?.status==='running')||current.status==='running';$('#ai-results-dialog').showModal();
  }catch(e){notice(e.message);}
 }
-async function previewChatGPTPage(){
+async function previewPptPage(){
  const context=reader.context();
  if(!current||!context){notice('请先选择一份课件和要试解析的页面。');return;}
  const {sourceId,pageIndex}=context.focus,dialog=$('#chatgpt-page-dialog');
@@ -604,8 +604,8 @@ async function previewChatGPTPage(){
  $('#chatgpt-page-label').textContent=context.file.name+' · 第 '+(pageIndex+1)+' 页';
  result.replaceChildren();status.replaceChildren(panel);dialog.showModal();
  try{
-  const {chatgptJobId}=await post(endpoint('chatgpt-ppt-page'),{sourceId,pageIndex});
-  const {page,warnings}=await observeAcpJob({api,post,id:chatgptJobId,host:panel,transport:'chatgpt',showText:false});
+  const {id,transport}=await post(endpoint('ppt-page-preview'),{sourceId,pageIndex});
+  const {page,warnings}=await observeAcpJob({api,post,id,host:panel,transport,showText:false});
   const add=(tag,text,lang)=>{const node=document.createElement(tag);node.textContent=text;if(lang)node.lang=lang;result.append(node);};
   add('h3','原文与翻译');
   if(!page.paragraphs.length)add('p','本页没有正文段落。');

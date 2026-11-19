@@ -89,6 +89,9 @@ test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolat
  const post=(route,body)=>request(route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
  const profile={id:'gpt',name:'Fixture GPT',model:'fixture-model',provider:'chatgpt-plan'};
  await post('/api/settings/editor',{section:'model',profile});
+ await post('/api/settings/editor',{section:'model',profile:{id:'api-choice',provider:'api',name:'Vision API',model:'fixture-vision',baseUrl:'http://127.0.0.1:1',apiKey:'fixture'}});
+ await post('/api/settings/editor',{section:'model',profile:{id:'acp-choice',provider:'antigravity-acp',name:'Gemini ACP',model:'fixture-flash',acpEntry:'cli',acpExecutable:'C:/Official/agy.exe'}});
+
  await post('/api/settings/editor',{section:'models',defaultProfileId:'gpt'});
  await post('/api/settings/editor',{section:'routes',modelRoutes:{pptPreview:'gpt'}});
  const project=await post('/api/projects',{name:'Plan workflow'});
@@ -132,12 +135,16 @@ test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolat
  await waitFor("!document.querySelector('#workspace').hidden");
  await ui.evaluate("document.querySelector('#surface-reading').click();true");
  await waitFor("document.querySelector('#reader-file').selectedOptions[0]?.textContent.includes('Slides.pdf')");
- await ui.evaluate("document.querySelector('#reader-more summary').click();[...document.querySelectorAll('#reader-more button')].find(b=>b.textContent==='用 ChatGPT 试解析本页').click();true");
+ await ui.evaluate("document.querySelector('#reader-more summary').click();[...document.querySelectorAll('#reader-more button')].find(b=>b.textContent==='试解析本页').click();true");
  await waitFor("document.querySelector('#chatgpt-page-dialog').open&&document.querySelector('#chatgpt-page-result').textContent.includes('测试课件译文')");
  assert.equal(await ui.evaluate("document.querySelector('#chatgpt-page-label').textContent"),'Slides.pdf · 第 1 页');
  await ui.evaluate("document.querySelector('#chatgpt-page-close').click();document.querySelector('#settings-open').click();true");
  await waitFor("document.querySelector('#default-model')?.value==='gpt'");
  assert.equal(await ui.evaluate("[...document.querySelectorAll('.settings-test-actions button')].filter(b=>/^测试/.test(b.textContent)).map(b=>b.textContent).join(',')"),'测试纯文字,测试 JSON,测试图片');
+ await ui.evaluate("document.querySelector('[data-settings-section=routes]').click();true");
+ const choices=await ui.evaluate("[...document.querySelectorAll('select[data-task]')].map(s=>[...s.options].map(o=>o.value))");
+ assert.equal(choices.length,12);
+ for(const options of choices)for(const profileId of ['gpt','api-choice','acp-choice'])assert(options.includes(profileId));
  await wait((await post(route+'/process',{mode:'preparation'})).chatgptJobId);
  assert.match(await (await fetch(base+route+'/output?scope=preparation&name=PPT_Bilingual_Guide.md')).text(),/测试课件译文/);
  const session=(await post(route+'/sessions',{type:'Lecture',title:'Comparison'})).session;
