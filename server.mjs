@@ -483,7 +483,7 @@ const server=http.createServer(async(req,res)=>{
     if(!generation||generation!==session.generation)throw Error('没有这个讲稿版本。');
     try{const timeline=await loadTranscript(dir,session,p.files,generation),file=p.files.find(f=>f.id===session.audio?.fileId&&f.sessionId===session.id&&f.role==='audio');return respond(res,200,{available:true,...timeline,audio:file?{...session.audio,name:file.name,url:`/api/projects/${encodeURIComponent(id)}/audio?id=${encodeURIComponent(file.id)}`,matched:session.audio.srtId===timeline.srtId&&session.audio.srtHash===timeline.srtHash}:null});}catch(e){return respond(res,200,{available:false,message:e.message});}
    }
-   if(action==='bb'&&method==='POST'){editable(id);const b=await payload(req);if(typeof b.text!=='string')throw Error('课程介绍应为文字。');p.bbText=b.text;p.revision++;p.materialRevision++;await atomic(path.join(dir,'Source','BB_Info.md'),b.text);await putClass(p);return respond(res,200,p);}
+   if(action==='bb'&&method==='POST'){editable(id);const b=await payload(req);if(typeof b.text!=='string')throw Error('课程介绍应为文字。');if(b.text===(p.bbText??''))return respond(res,200,p);p.bbText=b.text;p.revision++;p.materialRevision++;await atomic(path.join(dir,'Source','BB_Info.md'),b.text);await putClass(p);return respond(res,200,p);}
    if(action==='upload'&&method==='POST'){
     editable(id);const name=originalName(decodeURIComponent(req.headers['x-file-name']||'')),role=req.headers['x-file-role'];
     const allowed={bb:['.md','.txt','.pdf'],ppt:['.ppt','.pptx','.pdf'],reading:['.pdf'],srt:['.srt']};if(!allowed[role]?.includes(path.extname(name).toLowerCase()))throw Error('材料类型与扩展名不匹配。');

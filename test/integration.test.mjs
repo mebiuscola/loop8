@@ -37,6 +37,12 @@ test('local workflow: parse recovery, immutable originals, complete outputs, QA,
   check=await diagnostic('mineru-connection',{mineruMode:'cloud',mineruToken:'',clearMineruToken:true});assert.equal(check.status,'error');assert.match(check.message,/Token/);assert.equal(check.limitSeconds,60);
   const p=(await call('/api/projects',{name:'05 · Theory'})).value,id=p.id;
   await call(`/api/projects/${id}/bb`,{text:'Comparative literature and opacity.'});
+  const repeated=await call(`/api/projects/${id}/bb`,{text:'Comparative literature and opacity.'});
+  const baseline=await call(`/api/projects/${id}`);
+  await call(`/api/projects/${id}/bb`,{text:repeated.value.bbText});
+  const unchanged=await call(`/api/projects/${id}`);
+  assert.equal(unchanged.value.materialRevision,baseline.value.materialRevision);
+  assert.equal(unchanged.value.revision,baseline.value.revision);
   const srt='1\n00:00:01,000 --> 00:00:03,000\nLet us discuss opacity.\n\n2\n00:00:03,100 --> 00:00:05,000\nStudent: Why?';
   await upload(id,'srt','SmartSub_RAW.srt',srt);let state=await upload(id,'reading','reading.pdf','original-pdf-fixture');const f=state.files.find(f=>f.role==='reading');
   const wait=async()=>{for(let i=0;i<200;i++){const p=(await call(`/api/projects/${id}`)).value;if(p.status!=='running')return p;await sleep(30);}throw Error('job timeout');};
