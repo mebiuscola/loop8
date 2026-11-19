@@ -123,11 +123,18 @@ async function select(id){
   surfaceState:{overview:{scope:next.sessions[0]?.id||'preparation'},transcripts:{scope:next.sessions[0]?.id||'week'},analysis:{scope:'week'}},
   askScope:'week',askManual:false,askSessionId:next.sessions.length===1?next.sessions[0].id:'',docName:'PPT_Bilingual_Guide.md'
  });
+ const readingTab=sessionStorage.getItem('classroom-reading-tab:'+id);
+ if(!projectViews.has(id)&&['courseware','reference'].includes(readingTab)){
+  surface='reading';materialView=readingTab;askKind=readingTab;askScope='page';
+ }
  selectedVersion='';outputKey='';$('#bb').value=current.bbText||'';notice('');render();await refreshList();await loadDoc();
 }
 async function switchScope(scope){viewScope=scope;if(scope!=='preparation'&&scope!=='week'){askSessionId=scope;if(!askManual)askScope='session';}else if(!askManual)askScope=scope==='preparation'&&surface==='reading'?'page':'week';if(!askManual){askKind=surface==='reading'?(materialView==='reference'?'reference':'courseware'):'course';if(surface!=='reading'&&askScope==='page')askScope='week';}
  docName=documents()[0]?.[0]||'Class_Script_Bilingual.md';selectedVersion='';outputKey='';render();await loadDoc();}
 function renderSurface(){
+ const readingKey='classroom-reading-tab:'+current.id;
+ if(surface==='reading')sessionStorage.setItem(readingKey,materialView);
+ else sessionStorage.removeItem(readingKey);
  const reading=surface==='reading',transcripts=surface==='transcripts',analysis=surface==='analysis',overview=surface==='overview';
  document.body.classList.toggle('reading-surface',reading);document.body.classList.toggle('transcript-surface',transcripts);document.body.classList.toggle('analysis-surface',analysis);document.body.classList.toggle('focus-reading',reading&&localStorage.getItem('classroom-reading-focus')==='1');$('#reading-focus').textContent=document.body.classList.contains('focus-reading')?'退出专注':'专注阅读';$('#reading-focus').setAttribute('aria-pressed',String(document.body.classList.contains('focus-reading')));$('#course-overview').hidden=!overview;$('#transcript-controls-slot').hidden=overview;$('.lower').hidden=overview;
  for(const name of ['overview','reading','transcripts','analysis']){

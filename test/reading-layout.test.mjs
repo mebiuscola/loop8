@@ -62,6 +62,8 @@ test('compact reading layout gives documents viewport space, resizes actual sepa
   await ui.evaluate("document.querySelector('#reader-hint').textContent='向下滚动连续阅读；点击页码可跳页。';true");await sleep(40);assert.equal(await ui.evaluate("document.querySelector('#reader-message').hidden&&!document.querySelector('.reading-notice-entry')"),true,'routine guidance adds no banner or pending badge');
   await ui.evaluate("document.querySelector('#reading-focus').click();true");await wait("getComputedStyle(document.querySelector('aside')).display==='none'");g=await geometry();assert(g.top<170,JSON.stringify(g));assert(g.height>800,JSON.stringify(g));
   await ui.evaluate("document.querySelector('#reading-focus').click();document.querySelector('#reader-next').click();true");await wait("document.querySelector('#reader-page').value==='2'");
+  await ui.evaluate("window.beforeAuditReload=true;setTimeout(()=>location.reload(),0);true");
+  await wait("!window.beforeAuditReload&&document.querySelector('#surface-reading')?.getAttribute('aria-current')==='page'&&document.querySelector('#reader-page')?.value==='2'");
   await wait("(()=>{const row=document.querySelector('.page-row[data-page=\"1\"]').getBoundingClientRect(),view=document.querySelector('#reader-scroll').getBoundingClientRect();return row.top<view.bottom&&row.bottom>view.top;})()");
   await ui.screenshot(1320,1000);
   await ui.evaluate("document.querySelector('#qa-launch').click();document.querySelector('#qa-layout').click();true");
