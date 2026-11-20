@@ -6,10 +6,12 @@
 
 1. 二选一：安装 [官方 Antigravity CLI](https://antigravity.google/docs/getting-started?tab=cli)，或者从 [ACP Registry 的 Google 发布条目](https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json) 下载 Windows 独立 ZIP。独立版不需要 CLI；完整解压，保留同一版本的 `agy_acp_server.exe` 和 `localharness_external.exe`。不要只复制一个 EXE，不要重命名，不要使用 OAuth 反代或第三方修改过的运行时。
 2. 双击 `Start.cmd`。进入“模型与解析设置 → AI 模型”，点击“添加模型”，连接方式选择“Antigravity · 官方 ACP”。
-3. CLI 选择 CLI 入口并填写 `agy.exe` 的完整路径；独立版选择“独立 ACP · agy_acp_server.exe”，填写主程序的完整路径。应用检查同目录的配套 EXE，并自动为子进程设置 `ANTIGRAVITY_HARNESS_PATH`；不需要修改系统环境变量。当前只启动原生 EXE，不执行 CMD、PowerShell、附加命令或自定义参数。Windows 可用 `where.exe agy` 查找 CLI 入口。
+3. CLI 选择 CLI 入口并填写 `agy.exe` 的完整路径；独立版选择“独立 ACP · agy_acp_server.exe”，填写主程序的完整路径。应用检查同目录的配套 EXE，并自动为子进程设置 `ANTIGRAVITY_HARNESS_PATH`；不需要修改系统环境变量。ACP 协议连接直接启动上述原生 EXE。Windows 可用 `where.exe agy` 查找 CLI 入口。
 4. 点击“个人账号登录”。界面依次显示启动、协议握手、官方认证及阶段耗时。浏览器未自动打开时，可使用面板内“打开登录页面”或“复制登录链接”。认证成功立即显示完成，不等待模型列表。若官方已保存有效凭据，可能无需再次弹出浏览器。凭据由官方运行时保存，本应用不读取登录缓存、OAuth token 或账号密码。之后单独点击“读取模型列表”，选择账号实际返回的模型及可用 Thinking 选项。选择模型不会自动发请求；切换模型后可手动刷新其选项。
 5. 点击“测试文字 / JSON”和“测试图片”。这些测试会消耗少量账号额度。读取模型列表只进行协议连接和建会话，不发送生成请求。
 6. 点击“保存连接”。之后可以在 AI 模型顶部将它设为全局默认，并“保存默认模型”；或在“功能分配”中给指定功能选择它并保存。所有功能都可选择 API 或 ACP，没有按类型隐藏的默认模型限制。模型列表与能力测试本身不会保存设置。
+
+退出个人账号时，在模型设置点击“退出登录”，确认后按官方 CLI 窗口提示完成退出。此操作使用已保存的 agy.exe 路径，适用于此电脑共享的 Antigravity 登录。 [官方退出说明](https://antigravity.google/docs/cli/install/)
 
 打开 Ask 提问即可。官方运行时若需要重新登录，会启动原生授权流程，并在状态区提示。回复以文字流显示；本次任务的工具权限通过官方 ACP 回调自动选择 allow_once，不持久授予 allow_always。可以随时点击“停止”。期间可以切换课程和阅读资料，回答写回原来的问答范围。
 

@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
 import {spawn} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {createAcpPool,createAcpRuntime,validateAcpProfile,assertInteractiveProvider,prepareAcpLaunch} from '../lib/acp-client.mjs';
+import {createAcpPool,createAcpRuntime,validateAcpProfile,assertInteractiveProvider,prepareAcpLaunch,openAcpLogout} from '../lib/acp-client.mjs';
 import {mkdtemp,writeFile,rm,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -92,4 +93,19 @@ test('interactive jobs require permission ID, never accept always-allow, stop ab
   const waiting=jobs.get(initial.id);assert.equal(waiting.permission.options.length,1);assert.throws(()=>jobs.decide(initial.id,'wrong','once'));assert.throws(()=>jobs.decide(initial.id,waiting.permission.id,'always'));jobs.decide(initial.id,waiting.permission.id,'once');await sleep(5);assert.equal(jobs.get(initial.id).status,'success');
   const other=jobs.start(async options=>{await new Promise(resolve=>options.signal.addEventListener('abort',resolve,{once:true}));options.signal.throwIfAborted();});await sleep(120);assert.equal(jobs.get(other.id).status,'cancelled');
  }finally{await jobs.close();}
+});
+
+test('logout opens the saved CLI with the official interactive command',async()=>{
+ const folder=await mkdtemp(path.join(os.tmpdir(),'classroom logout-')),cli=path.join(folder,'agy.exe');
+ try{
+  await writeFile(cli,'fixture');
+  await openAcpLogout(cli,(binary,args,options)=>{
+   assert.equal(path.basename(binary),'powershell.exe');
+   assert.equal(options.env.CLASSROOM_LOGOUT_CLI,cli);
+   assert.equal(options.env.GEMINI_API_KEY,undefined);
+   assert.match(args.at(-1),/'--prompt-interactive','\/logout'/);
+   assert(!args.at(-1).includes(cli));
+   const helper=new EventEmitter();queueMicrotask(()=>helper.emit('exit',0));return helper;
+  });
+ }finally{await rm(folder,{recursive:true,force:true});}
 });

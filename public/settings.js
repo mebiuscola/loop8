@@ -179,6 +179,20 @@ export function initSettings({api,post,notice}){
    }catch(e){testStatus.textContent=e.message;const record=results.get(p.id)||{};record[kind]={fingerprint:fp,message:e.message};results.set(p.id,record);}finally{testing.delete(p.id);paintTesting();for(const b of actions.children)b.disabled=false;if(section==='models'&&selected===p.id)render();}
   }
   for(const [text,kind] of [...(p.provider==='antigravity-acp'?[['个人账号登录','login'],['读取模型列表','inspect']]:[]),...(plan(p)||p.provider==='antigravity-acp'?[['测试纯文字','text'],['测试 JSON','json']]:[['测试文字 / JSON','ai']]),['测试图片','vision']])actions.append(button(text,()=>check(kind)));
+  if(p.provider==='antigravity-acp'){
+   const logout=button('退出登录',async()=>{
+    if(!confirm('退出此电脑共享的 Antigravity 个人账号？其他使用同一账号的 Antigravity 应用也可能需要重新登录。'))return;
+    logout.disabled=true;
+    try{
+     const result=await post('/api/settings/acp-logout',{confirm:true});
+     metadata.clear();
+     for(const profile of saved.modelProfiles.filter(item=>item.provider==='antigravity-acp'))results.delete(profile.id);
+     testStatus.textContent=result.message;
+    }catch(error){testStatus.textContent=error.message;}
+    finally{logout.disabled=false;}
+   });
+   actions.append(logout);
+  }
   if(testing.has(p.id)){for(const b of actions.children)b.disabled=true;testStatus.textContent='此连接有正在进行的任务，进度如下。';}
   editor.append(button('删除连接',async()=>{if(!confirm('删除“'+(p.name||'未命名连接')+'”？引用此连接的功能将改为使用默认模型；若它是默认模型，则需要重新选择默认模型。'))return;try{if(saved.modelProfiles.some(x=>x.id===p.id))await persist({section:'delete-model',profileId:p.id});drafts.delete(p.id);dirty.delete('model:'+p.id);defaultId=saved.defaultProfileId||'';routes={...saved.modelRoutes};selected='';render();}catch(e){status.textContent=e.message;}},'settings-delete-model'));
  }
