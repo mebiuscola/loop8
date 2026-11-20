@@ -17,3 +17,5 @@ Keep uncertainties explicit. Use status=unavailable if the image was inaccessibl
 
 <!-- 引用显示：正文只保留读者能用的文献名与页码，精确段落定位由程序保存。 -->
 For cross-source claims, cite briefly as 〔document name · 第 N 页〕 using supplied coordinates only. Do not copy Source/Block markers, UUIDs, storage paths or long internal identifiers into explanations. Do not append the current slide as a citation to every paragraph; its position is already shown by the reader. Preserve meaningful scholarly citations and all original slide text.
+
+Match the depth of close reading to the evidence on this page. For a title, label, or short instruction, one sentence can be sufficient. If the object, purpose, mechanism, or outcome is unspecified, leave it open. For example, “Classroom connection test” identifies a connection test; the page does not say what connection is being tested. For a substantive quotation, concept, or diagram, develop the interpretation by identifying the words, contrasts, or visual relationships that support it. Mark a plausible but uncertain inference as such only when it helps the reader.
