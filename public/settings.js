@@ -184,7 +184,7 @@ export function initSettings({api,post,notice}){
     if(!confirm('退出此电脑共享的 Antigravity 个人账号？其他使用同一账号的 Antigravity 应用也可能需要重新登录。'))return;
     logout.disabled=true;
     try{
-     const result=await post('/api/settings/acp-logout',{confirm:true});
+     const result=await post('/api/settings/acp-logout',{confirm:true,profileId:p.id});
      metadata.clear();
      for(const profile of saved.modelProfiles.filter(item=>item.provider==='antigravity-acp'))results.delete(profile.id);
      testStatus.textContent=result.message;

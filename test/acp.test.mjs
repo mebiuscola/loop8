@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {EventEmitter} from 'node:events';
 import {spawn} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {createAcpPool,createAcpRuntime,validateAcpProfile,assertInteractiveProvider,prepareAcpLaunch,openAcpLogout} from '../lib/acp-client.mjs';
+import {createAcpPool,createAcpRuntime,validateAcpProfile,assertInteractiveProvider,prepareAcpLaunch} from '../lib/acp-client.mjs';
 import {mkdtemp,writeFile,rm,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -95,17 +94,12 @@ test('interactive jobs require permission ID, never accept always-allow, stop ab
  }finally{await jobs.close();}
 });
 
-test('logout opens the saved CLI with the official interactive command',async()=>{
- const folder=await mkdtemp(path.join(os.tmpdir(),'classroom logout-')),cli=path.join(folder,'agy.exe');
+test('logout receives an explicit acknowledgement from the ACP agent',async()=>{
+ const runtime=create();
  try{
-  await writeFile(cli,'fixture');
-  await openAcpLogout(cli,(binary,args,options)=>{
-   assert.equal(path.basename(binary),'powershell.exe');
-   assert.equal(options.env.CLASSROOM_LOGOUT_CLI,cli);
-   assert.equal(options.env.GEMINI_API_KEY,undefined);
-   assert.match(args.at(-1),/'--prompt-interactive','\/logout'/);
-   assert(!args.at(-1).includes(cli));
-   const helper=new EventEmitter();queueMicrotask(()=>helper.emit('exit',0));return helper;
-  });
- }finally{await rm(folder,{recursive:true,force:true});}
+  await runtime.run(settings,{action:'login'});
+  const result=await runtime.run(settings,{action:'logout'});
+  assert.equal(result.authenticated,false);
+  assert.match(result.message,/已退出/);
+ }finally{await runtime.disconnect();}
 });

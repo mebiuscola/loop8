@@ -19,6 +19,8 @@ test('Google sign-in link survives panel remounts, repeated clicks do not restar
   ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/',0);true");await until(()=>ui.evaluate("!!document.querySelector('.settings-menu')"));await ui.evaluate("document.querySelector('#settings-open').click();true");await until(()=>ui.evaluate("!!document.querySelector('[data-profile=login-test]')"));
   assert(await ui.evaluate("[...document.querySelectorAll('.settings-test-actions button')].some(b=>b.textContent==='退出登录')"));
   assert.equal(await ui.evaluate("(async()=>{const r=await fetch('/api/settings/acp-logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});return r.status;})()"),400);
+  await ui.evaluate("window.confirm=()=>true;[...document.querySelectorAll('.settings-test-actions button')].find(b=>b.textContent==='退出登录').click();true");
+  await until(()=>ui.evaluate("document.body.innerText.includes('已退出 Antigravity 个人账号')"));
   await ui.evaluate("[...document.querySelectorAll('.settings-test-actions button')].find(b=>b.textContent==='个人账号登录').click();true");await until(()=>ui.evaluate("!!document.querySelector('.acp-login-actions a')"));
   const href=await ui.evaluate("document.querySelector('.acp-login-actions a').href");assert(href.startsWith('https://accounts.google.com/o/oauth2/v2/auth?'));
   assert(await ui.evaluate("document.querySelector('.acp-progress').textContent.includes('秒')"));

@@ -4,7 +4,7 @@ import {registerReadingReferences} from './lib/reading-references.mjs';
 import {renderReadingCitations} from './lib/deep-dive.mjs';
 import {resolveModel,mergeModelProfiles,validateModelRouting,publicProfiles,taskForStage,migrateModelSettings,acpPathsForSettings,setAcpPaths} from './lib/model-routing.mjs';
 import {acpInteraction} from './lib/acp-interaction.mjs';
-import {acpRuntime,createAcpPool,openAcpLogout} from './lib/acp-client.mjs';
+import {acpRuntime,createAcpPool} from './lib/acp-client.mjs';
 import {interactiveJobs} from './lib/acp-jobs.mjs';
 import {inspectRecognition,learningFreshness} from './lib/ppt-quality.mjs';
 import {PPT_CONTENT_SCHEMA,draftToPage,normalizePptDraft} from './lib/ppt-response.mjs';
@@ -317,12 +317,12 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/api/settings/acp-logout'&&method==='POST'){
    const input=await payload(req);
    if(input.confirm!==true)throw Error('请先确认退出共享的 Antigravity 账号。');
-   const settings=await config(),cli=acpPathsForSettings(settings).cli;
-   if(!cli)throw Error('请先在模型设置中保存官方 CLI（agy.exe）路径。');
+   const settings=await config();
+   const selected=settings.modelProfiles.find(p=>p.provider==='antigravity-acp'&&p.id===input.profileId);
+   if(!selected)throw Error('请先保存并选择 Antigravity 模型连接。');
    if(acpJobs.busy||acpRuntime.busy)throw Error('请先完成或停止正在运行的 ACP 任务，再退出登录。');
-   await acpRuntime.disconnect();
-   await openAcpLogout(cli);
-   return respond(res,200,{message:'已打开官方 CLI，请在该窗口查看退出结果。如仍停在输入框，请输入 /logout 并回车。'});
+   const profile={...selected,acpExecutable:acpPathsForSettings(settings)[selected.acpEntry]||selected.acpExecutable};
+   return respond(res,200,await acpRuntime.run(profile,{action:'logout'}));
   }
   if(url.pathname==='/api/settings/model-test'&&method==='POST'){
    const b=await payload(req),saved=migrateModelSettings(await config());if(!['ai','text','json','vision','inspect','login'].includes(b.kind))throw Error('无效测试类型。');

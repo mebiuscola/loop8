@@ -3,7 +3,8 @@ import {Readable,Writable} from 'node:stream';
 let count=0,authenticated=false;const waiting=new Map(),sessions=new Map(),referenceBatches=new Set();
 const configOptions=[{id:'model',name:'Model',category:'model',type:'select',currentValue:'mock-gemini',options:[{value:'mock-gemini',name:'Mock Gemini'},{value:'mock-other',name:'Mock Other'}]},{id:'thinking',name:'Thinking',category:'thought_level',type:'select',currentValue:'low',options:[{value:'low',name:'Low'},{value:'high',name:'High'}]}];
 acp.agent()
- .onRequest('initialize',async ctx=>{if(process.env.MOCK_ACP_HANG==='initialize')await new Promise(()=>{});return {protocolVersion:ctx.params.protocolVersion,agentCapabilities:{promptCapabilities:{image:true}},agentInfo:{name:'Mock official ACP fixture',version:'1'},authMethods:[{id:'oauth-personal',name:'Google personal'}]};})
+ .onRequest('initialize',async ctx=>{if(process.env.MOCK_ACP_HANG==='initialize')await new Promise(()=>{});return {protocolVersion:ctx.params.protocolVersion,agentCapabilities:{auth:{logout:{}},promptCapabilities:{image:true}},agentInfo:{name:'Mock official ACP fixture',version:'1'},authMethods:[{id:'oauth-personal',name:'Google personal'}]};})
+ .onRequest('logout',async()=>{authenticated=false;return {};})
  .onRequest('authenticate',async ctx=>{if(ctx.params.methodId!=='oauth-personal')throw Error('Wrong auth method');
   if(process.env.MOCK_ACP_AUTH_URL){const line='Open the following link to authenticate the ACP server: https://accounts.google.com/o/oauth2/v2/auth?client_id=fixture&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A18901%2F&state=fixture-only\n';process.stderr.write(line.slice(0,95));await new Promise(r=>setTimeout(r,15));process.stderr.write(line.slice(95));}
   if(process.env.MOCK_ACP_AUTH_DELAY)await new Promise(r=>setTimeout(r,Number(process.env.MOCK_ACP_AUTH_DELAY)));
