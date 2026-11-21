@@ -13,6 +13,16 @@ export interface ReaderPage{sourceId:string;pageIndex:number;pageType?:string;pa
 export interface CoursewareReader{sourceId:string;source:string;sourceHash:string;previewIssue?:string;generated:boolean;stale:boolean;sourceChanged?:boolean;learningStale?:boolean;nativePageCount?:number;pages:ReaderPage[];review?:{status?:string;issues?:unknown[]}|null;}
 export interface ReferenceParagraph{key:string;pageIndex:number|null;printedPage?:string|null;kind:string;english:string;chinese:string;status:'complete'|'pending'|'blocked'|string;}
 export interface ReferenceReader{sourceId:string;source:string;pdf:boolean;generated:boolean;stale:boolean;needsPublish?:boolean;paragraphs:ReferenceParagraph[];summary:{total:number;completed:number;blocked:number};taskStatus?:string;sourceWarnings?:{missingPages?:number[];uncertaintyCount?:number};}
+export type Provider='api'|'antigravity-acp'|'chatgpt-plan';
+export interface ModelProfile{id:string;name:string;provider?:Provider;baseUrl?:string;model:string;apiKey?:string;hasApiKey?:boolean;clearApiKey?:boolean;contextChars?:number;maxOutputTokens?:number;outputTokenField?:string;visionEnabled?:boolean;acpEntry?:'cli'|'standalone';acpExecutable?:string;acpThinking?:string;}
+export interface Settings{modelProfiles:ModelProfile[];modelRoutes:Record<string,string>;defaultProfileId:string;fallbackProfileId:string;fallbackEnabled:boolean;acpPaths:Record<string,string>;
+ hasMineruToken:boolean;mineruLanguage:string;uploadConcurrency:number;previewEngine:string;browserPath:string;libreOfficePath:string;
+ contextConcurrency:number;parseConcurrency:number;compactPptImages:boolean;chunkChars:number;structuredOutput:boolean;contextChars:number;maxOutputTokens:number;outputTokenField:string;visionEnabled:boolean;}
+export type SettingsSave={section:'model';profile:ModelProfile;acpPaths?:Record<string,string>}|{section:'delete-model';profileId:string}|{section:'models';defaultProfileId:string}
+ |{section:'routes';modelRoutes:Record<string,string>;fallbackProfileId:string;fallbackEnabled:boolean}|{section:'mineru'|'preview'|'advanced';[key:string]:unknown};
+export interface TestJob{id:string;status:string;stage?:string;message?:string;transport?:'acp'|'chatgpt'|'api';}
+export interface InteractiveJobView extends InteractiveJob{phaseStarted?:number;authorizationUrl?:string;text?:string;modelLabel?:string;permission?:{id:string;title:string;details?:string;options:{optionId:string;name:string;kind:string}[]}|null;result?:{message?:string;models?:{modelId:string;name?:string}[];currentModel?:string;[k:string]:unknown};}
+export interface ChatgptStatus{connected:boolean;email:string;pending:boolean;permissionDeclined:boolean;error:string;}
 export type ProcessMode='preparation'|'reference';
 export type AskResult={messages:ChatMessage[]}|{chatgptJobId:string}|{acpJobId:string};
 
@@ -43,6 +53,20 @@ export const api={
  process:(id:string,mode:ProcessMode,sourceId?:string)=>post<unknown>(project(id)+'/process',{mode,...(sourceId?{sourceId}:{})}),
  ask:(id:string,question:string,scope:string,focus:unknown=null)=>post<AskResult>(project(id)+'/ask',{question,scope,focus}),
  cancelAiParse:(id:string,sourceId:string)=>post<unknown>(project(id)+'/ai-parse-cancel',{sourceId}),
- job:(kind:'acp'|'chatgpt',jobId:string)=>request<InteractiveJob>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)),
+ job:(kind:'acp'|'chatgpt',jobId:string)=>request<InteractiveJobView>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)),
  cancelJob:(kind:'acp'|'chatgpt',jobId:string)=>post<unknown>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)+'/cancel',{}),
+ answerPermission:(kind:'acp'|'chatgpt',jobId:string,permissionId:string,optionId:string|null)=>post<unknown>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)+'/permission',{permissionId,optionId}),
+
+ // Settings (docs/API.md §8). Keys and tokens are write-only: the editor only reports hasApiKey / hasMineruToken.
+ settings:()=>request<Settings>('/api/settings/editor'),
+ saveSettings:(payload:SettingsSave)=>post<Settings>('/api/settings/editor',payload),
+ modelTest:(kind:'ai'|'text'|'json'|'vision'|'inspect'|'login',profile:ModelProfile)=>post<TestJob>('/api/settings/model-test',{kind,profile}),
+ settingsTest:(kind:string,settings:Record<string,unknown>)=>post<TestJob>('/api/settings/test',{kind,settings}),
+ testJob:(jobId:string)=>request<TestJob>('/api/settings/test/'+encodeURIComponent(jobId)),
+ cancelTest:(jobId:string)=>post<unknown>('/api/settings/test/'+encodeURIComponent(jobId)+'/cancel',{}),
+ acpLogout:(profileId:string)=>post<{message?:string}>('/api/settings/acp-logout',{profileId,confirm:true}),
+ chatgptStatus:()=>request<ChatgptStatus>('/api/chatgpt/status'),
+ chatgptLogin:(reconsent=false)=>post<{authorizationUrl:string}>('/api/chatgpt/login',{reconsent}),
+ chatgptDisconnect:()=>post<unknown>('/api/chatgpt/disconnect',{}),
+ chatgptModels:()=>request<{models:{modelId:string;name:string}[]}>('/api/chatgpt/models'),
 };
