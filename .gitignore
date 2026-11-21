@@ -4,3 +4,10 @@ node_modules/
 runtime/
 *.log
 agy-acp-server/
+
+# Private local settings of AI dev tools
+.claude/settings.local.json
+
+# Windows clutter
+Thumbs.db
+desktop.ini
