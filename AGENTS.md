@@ -56,6 +56,7 @@ Windows 上运行的本地课程工作台：一个 Node.js 服务（`server.mjs`
   - `web/`：新前端源码（`web/src/lib/api.ts` 是唯一调用后端的地方，只用 `docs/API.md` 中的接口；全局轮询和后台任务数据层各只有一处）。
   - `public/next/`：构建产物，**提交进仓库**，因为用户不运行 npm。改了 `web/` 必须重新构建并一起提交。
   - 新前端在 `/next` 提供；旧前端在 `/` 保持不变，直到迁移完成。
-- **用户运行方式不变：** 双击 `Start.cmd`，不需要 npm、不需要构建。构建工具只是开发依赖（`devDependencies`）。
+- **用户运行方式不变：** 双击 `Start.cmd`，不需要 npm、不需要构建。构建工具只是开发依赖，写在 `web/package.json`，装在 `web/node_modules/`（不碰根目录随包分发的 `node_modules/`）。
+- **开发命令**（在 `web/` 里）：`npm run check` 类型检查；`npm run build` 构建到 `public/next/`；`npm run dev` 开发服务器（把 `/api` 转发到 `CLASSROOM_PORT`，默认 4317 上运行的服务）。
 - **样式：** 颜色、字号、间距、状态色全部用 `web/src/styles/tokens.css` 中的变量，组件里不写裸色值；状态词和按钮位置遵守 `docs/IA-PROPOSAL.md` 第 2 节。
 - **迁移顺序：** 框架 → 阅读 → 设置 → 课堂 → Deep Dive → 概览 → 切换 `/` 并删除旧前端。
