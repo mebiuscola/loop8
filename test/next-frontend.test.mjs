@@ -27,8 +27,8 @@ test('new frontend is served under /next with a strict CSP and no path traversal
    assert.match(index.headers.get('content-type'),/text\/html/);
    assert.equal(index.headers.get('cache-control'),'no-cache');
    const csp=index.headers.get('content-security-policy');
-   assert.match(csp,/script-src 'self';/);
-   assert.doesNotMatch(csp,/unsafe-inline|unsafe-eval/);
+   assert.match(csp,/script-src 'self' 'wasm-unsafe-eval';/);
+   assert.doesNotMatch(csp,/'unsafe-inline'|'unsafe-eval'/);
   }else{
    assert.equal(index.status,404);
    assert.equal((await index.json()).error,'新界面尚未构建。');
