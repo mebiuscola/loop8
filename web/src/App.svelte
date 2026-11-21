@@ -3,6 +3,7 @@
  import TopBar from './components/TopBar.svelte';
  import AskPanel from './components/AskPanel.svelte';
  import Pending from './components/Pending.svelte';
+ import ReadWorkspace from './components/read/ReadWorkspace.svelte';
  import {store} from './lib/store.svelte';
  import {router,courseHref} from './lib/router.svelte';
 
@@ -42,7 +43,7 @@
   {#if store.connectionError}
    <p class="banner" role="alert">{store.connectionError}</p>
   {/if}
-  <main class="content">
+  <main class="content" class:flush={route.page==='course'&&route.workspace==='read'}>
    {#if route.page==='settings'}
     <Pending title="设置" description="模型连接、功能分配、MinerU、原页预览与高级设置。"/>
    {:else if route.page==='course'}
@@ -50,6 +51,8 @@
      <section class="message"><h1>无法打开课程</h1><p>{store.currentError}</p></section>
     {:else if !store.current}
      <p class="loading">正在打开课程…</p>
+    {:else if route.workspace==='read'}
+     <ReadWorkspace project={store.current} rest={route.rest}/>
     {:else}
      <Pending {...pending[route.workspace]}/>
     {/if}
@@ -76,6 +79,8 @@
  .main{display:flex;flex-direction:column;min-width:0;min-height:0;}
  /* Only the content scrolls; the top bar never moves. */
  .content{flex:1;overflow:auto;padding:var(--space-4) var(--space-5);}
+ /* Workspaces with their own toolbar and scrolling fill the area edge to edge. */
+ .content.flush{padding:0;overflow:hidden;}
  .banner{margin:0;padding:var(--space-2) var(--space-5);background:var(--status-failed-bg);color:var(--status-failed-fg);font-size:var(--text-sm);}
  .message{max-width:560px;margin:var(--space-6) auto;}
  .message h1{font-size:var(--text-xl);margin-bottom:var(--space-2);}

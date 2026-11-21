@@ -2,6 +2,7 @@
  import Icon from './Icon.svelte';
  import {api,ApiError,type Project,type ChatMessage} from '../lib/api';
  import {store} from '../lib/store.svelte';
+ import {askContext} from '../lib/ask-context.svelte';
 
  let {project,onclose}:{project:Project;onclose:()=>void}=$props();
 
@@ -12,6 +13,11 @@
   ...project.sessions.map(s=>({id:s.id,label:s.type+' · '+s.title})),
  ]);
  let scope=$state('week');
+ // The reader offers "this page"; it is used until the user removes it, and comes back for another material.
+ let useFocus=$state(true);
+ const focus=$derived(useFocus?askContext.focus:null);
+ $effect(()=>{askContext.focus?.focus.sourceId;useFocus=true;});
+ const activeScope=$derived(focus?focus.scope:scope);
  let question=$state(''),sending=$state(false),error=$state(''),progress=$state('');
  let list:HTMLElement;
 
@@ -40,7 +46,7 @@
   if(!text||sending)return;
   sending=true;error='';progress='正在回答…';
   try{
-   const result=await api.ask(project.id,text,scope);
+   const result=await api.ask(project.id,text,activeScope,focus?.focus??null);
    if('chatgptJobId' in result)await waitForJob('chatgpt',result.chatgptJobId);
    else if('acpJobId' in result)await waitForJob('acp',result.acpJobId);
    question='';
@@ -62,7 +68,7 @@
 
  <div class="history" bind:this={list}>
   {#each history as m, i (m.at+m.role+i)}
-   <article class="msg {m.role}" class:current={m.scope===scope}>
+   <article class="msg {m.role}" class:current={m.scope===activeScope}>
     <div class="meta">{m.role==='user'?'我':'AI 回答'} · <span class="scope">{scopeLabel(m)}</span></div>
     <div class="text">{m.text}</div>
    </article>
@@ -72,11 +78,19 @@
  </div>
 
  <form onsubmit={send}>
-  <label class="scope-row">范围
-   <select bind:value={scope} disabled={sending}>
-    {#each scopes as s (s.id)}<option value={s.id}>{s.label}</option>{/each}
-   </select>
-  </label>
+  {#if focus}
+   <div class="scope-row">范围
+    <span class="chip" title={focus.label}><span class="chip-text">{focus.label}</span>
+     <button type="button" class="chip-x" onclick={()=>useFocus=false} title="改为按整体范围提问" aria-label="去掉当前位置"><Icon name="close" size={12}/></button>
+    </span>
+   </div>
+  {:else}
+   <label class="scope-row">范围
+    <select bind:value={scope} disabled={sending}>
+     {#each scopes as s (s.id)}<option value={s.id}>{s.label}</option>{/each}
+    </select>
+   </label>
+  {/if}
   <textarea bind:value={question} onkeydown={keydown} rows="3" placeholder="输入问题（Ctrl+Enter 发送）" aria-label="问题" disabled={sending} maxlength="10000"></textarea>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="send-row">
@@ -102,6 +116,10 @@
  .empty{color:var(--fg-muted);font-size:var(--text-sm);}
  form{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-3) var(--space-4);border-top:1px solid var(--line);}
  .scope-row{display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-xs);color:var(--fg-muted);}
+ .chip{display:inline-flex;align-items:center;gap:var(--space-1);min-width:0;max-width:100%;height:26px;padding:0 var(--space-1) 0 var(--space-2);border-radius:999px;background:var(--accent-soft);color:var(--accent-strong);font-size:var(--text-xs);}
+ .chip-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+ .chip-x{display:grid;place-items:center;width:20px;height:20px;border:0;border-radius:50%;background:transparent;color:inherit;}
+ .chip-x:hover{background:var(--white);}
  select{flex:1;height:28px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);font-size:var(--text-sm);}
  textarea{resize:vertical;min-height:64px;padding:var(--space-2);border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);}
  .error{margin:0;font-size:var(--text-xs);color:var(--status-failed-fg);}

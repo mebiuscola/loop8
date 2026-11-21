@@ -50,6 +50,13 @@ class Router{
  /** Course to show when the app opens with no hash. */
  lastCourse():string|null{return storage<string|null>(COURSE_KEY,null);}
  go(hash:string){if(location.hash!==hash)location.hash=hash;else this.sync();}
+ /** Record a new position (e.g. the page scrolled to) without a history entry or a re-render. */
+ remember(hash:string){
+  if(location.hash===hash)return;
+  history.replaceState(null,'',hash);
+  const route=parse(hash);
+  if(route.page==='course'){const all=storage<Record<string,string>>(LAST_KEY,{});all[route.courseId]=hash;store(LAST_KEY,all);}
+ }
 }
 
 export const router=new Router();

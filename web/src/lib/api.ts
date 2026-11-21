@@ -8,6 +8,12 @@ export interface ChatMessage{role:'user'|'assistant';text:string;scope:string;fo
 export interface ProjectSummary{id:string;name:string;status?:string;stage?:string;error?:string;tasks?:Record<string,Task>;}
 export interface Project extends ProjectSummary{files:SourceFile[];sessions:Session[];chat?:ChatMessage[];job?:{mode:string;sessionId?:string;sourceId?:string};}
 export interface InteractiveJob{id:string;status:string;stage?:string;message?:string;}
+export interface ReaderParagraph{english:string;chinese:string;}
+export interface ReaderPage{sourceId:string;pageIndex:number;pageType?:string;paragraphs:ReaderParagraph[];closeReading:string;learningStale?:boolean;inspection?:{status?:string};}
+export interface CoursewareReader{sourceId:string;source:string;sourceHash:string;previewIssue?:string;generated:boolean;stale:boolean;sourceChanged?:boolean;learningStale?:boolean;nativePageCount?:number;pages:ReaderPage[];review?:{status?:string;issues?:unknown[]}|null;}
+export interface ReferenceParagraph{key:string;pageIndex:number|null;printedPage?:string|null;kind:string;english:string;chinese:string;status:'complete'|'pending'|'blocked'|string;}
+export interface ReferenceReader{sourceId:string;source:string;pdf:boolean;generated:boolean;stale:boolean;needsPublish?:boolean;paragraphs:ReferenceParagraph[];summary:{total:number;completed:number;blocked:number};taskStatus?:string;sourceWarnings?:{missingPages?:number[];uncertaintyCount?:number};}
+export type ProcessMode='preparation'|'reference';
 export type AskResult={messages:ChatMessage[]}|{chatgptJobId:string}|{acpJobId:string};
 
 export class ApiError extends Error{constructor(message:string,public status:number){super(message);}}
@@ -29,6 +35,12 @@ export const api={
  listProjects:()=>request<ProjectSummary[]|{projects:ProjectSummary[]}>('/api/projects').then(r=>Array.isArray(r)?r:r.projects),
  getProject:(id:string)=>request<Project>(project(id)),
  createProject:(name:string)=>post<Project>('/api/projects',{name}),
+ reader:(id:string,sourceId:string)=>request<CoursewareReader>(project(id)+'/reader?source='+encodeURIComponent(sourceId)),
+ pageImageUrl:(id:string,sourceId:string,pageIndex:number,hash:string)=>project(id)+'/page-image?source='+encodeURIComponent(sourceId)+'&page='+(pageIndex+1)+'&hash='+encodeURIComponent(hash),
+ referenceReader:(id:string,sourceId:string)=>request<ReferenceReader>(project(id)+'/reference-reader?source='+encodeURIComponent(sourceId)),
+ referenceFileUrl:(id:string,sourceId:string)=>project(id)+'/reference-file?source='+encodeURIComponent(sourceId),
+ /** Starts a background generation; the task then shows up in project.tasks. */
+ process:(id:string,mode:ProcessMode,sourceId?:string)=>post<unknown>(project(id)+'/process',{mode,...(sourceId?{sourceId}:{})}),
  ask:(id:string,question:string,scope:string,focus:unknown=null)=>post<AskResult>(project(id)+'/ask',{question,scope,focus}),
  cancelAiParse:(id:string,sourceId:string)=>post<unknown>(project(id)+'/ai-parse-cancel',{sourceId}),
  job:(kind:'acp'|'chatgpt',jobId:string)=>request<InteractiveJob>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)),
