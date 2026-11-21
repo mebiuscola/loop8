@@ -15,7 +15,7 @@ export interface ReferenceParagraph{key:string;pageIndex:number|null;printedPage
 export interface ReferenceReader{sourceId:string;source:string;pdf:boolean;generated:boolean;stale:boolean;needsPublish?:boolean;paragraphs:ReferenceParagraph[];summary:{total:number;completed:number;blocked:number};taskStatus?:string;sourceWarnings?:{missingPages?:number[];uncertaintyCount?:number};}
 export type Provider='api'|'antigravity-acp'|'chatgpt-plan';
 export interface ModelProfile{id:string;name:string;provider?:Provider;baseUrl?:string;model:string;apiKey?:string;hasApiKey?:boolean;clearApiKey?:boolean;contextChars?:number;maxOutputTokens?:number;outputTokenField?:string;visionEnabled?:boolean;acpEntry?:'cli'|'standalone';acpExecutable?:string;acpThinking?:string;}
-export interface Settings{modelProfiles:ModelProfile[];modelRoutes:Record<string,string>;defaultProfileId:string;fallbackProfileId:string;fallbackEnabled:boolean;acpPaths:Record<string,string>;
+export interface Settings{acpBundled:string;modelProfiles:ModelProfile[];modelRoutes:Record<string,string>;defaultProfileId:string;fallbackProfileId:string;fallbackEnabled:boolean;acpPaths:Record<string,string>;
  hasMineruToken:boolean;mineruLanguage:string;uploadConcurrency:number;previewEngine:string;browserPath:string;libreOfficePath:string;
  contextConcurrency:number;parseConcurrency:number;compactPptImages:boolean;chunkChars:number;structuredOutput:boolean;contextChars:number;maxOutputTokens:number;outputTokenField:string;visionEnabled:boolean;}
 export type SettingsSave={section:'model';profile:ModelProfile;acpPaths?:Record<string,string>}|{section:'delete-model';profileId:string}|{section:'models';defaultProfileId:string}
