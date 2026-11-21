@@ -8,6 +8,11 @@
  let {collapsed=$bindable(false)}:{collapsed?:boolean}=$props();
 
  const dotText={running:'有任务在运行',attention:'有停止或失败的任务',ready:'没有未完成的任务'};
+ /** Short label for the collapsed list: capitals and digits, e.g. "DebateW4" → "DW4". */
+ function abbrev(name:string){
+  const marks=name.match(/[A-Z]|\d+/g)?.join('')||'';
+  return (marks||name).slice(0,4);
+ }
  let creating=$state(false),name=$state(''),createError=$state(''),busy=$state(false);
  const activeId=$derived(router.route.page==='course'?router.route.courseId:null);
 
@@ -62,7 +67,7 @@
   <ul class="courses mini">
    {#each store.projects as p (p.id)}
     {@const state=courseStatus(p)}
-    <li><a href={courseHref(p.id)} class:active={p.id===activeId} title={p.name+' · '+dotText[state]}><span class="dot {state}"></span><span class="initial">{p.name.slice(0,2)}</span></a></li>
+    <li><a href={courseHref(p.id)} class:active={p.id===activeId} title={p.name+' · '+dotText[state]}><span class="dot {state}"></span><span class="initial">{abbrev(p.name)}</span></a></li>
    {/each}
   </ul>
  {/if}

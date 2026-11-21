@@ -34,7 +34,9 @@
   <div class="tasks" bind:this={wrap}>
    <button class="btn btn-quiet" class:busy={running} onclick={()=>tasksOpen=!tasksOpen} aria-expanded={tasksOpen} aria-haspopup="dialog" title="后台任务">
     <Icon name="tasks" size={16}/>
-    {#if running}<span>{running} 个任务进行中</span>{:else if attention}<span class="warn">{attention} 个任务待处理</span>{:else}<span class="visually-hidden">后台任务</span>{/if}
+    {#if running}<span class="long">{running} 个任务进行中</span><span class="count">{running}</span>
+    {:else if attention}<span class="warn long">{attention} 个任务待处理</span><span class="warn count">{attention}</span>
+    {:else}<span class="visually-hidden">后台任务</span>{/if}
    </button>
    {#if tasksOpen}<TaskPanel onclose={()=>tasksOpen=false}/>{/if}
   </div>
@@ -46,9 +48,13 @@
 
 <style>
  .topbar{display:flex;align-items:center;gap:var(--space-4);height:var(--topbar-height);padding:0 var(--space-4);background:var(--bg-surface);border-bottom:1px solid var(--line);}
- .title{font-size:var(--text-lg);font-weight:var(--weight-bold);max-width:28ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
- .tabs{display:flex;gap:var(--space-1);height:100%;}
- .tabs a{display:flex;align-items:center;padding:0 var(--space-3);color:var(--fg-muted);text-decoration:none;font-size:var(--text-sm);border-bottom:2px solid transparent;}
+ .title{flex:0 1 auto;min-width:4em;font-size:var(--text-lg);font-weight:var(--weight-bold);max-width:28ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+ .tabs{flex:none;display:flex;gap:var(--space-1);height:100%;}
+ .tabs a{display:flex;align-items:center;padding:0 var(--space-3);color:var(--fg-muted);text-decoration:none;font-size:var(--text-sm);border-bottom:2px solid transparent;white-space:nowrap;}
+ .actions{flex:none;}
+ /* Narrow windows: the task button keeps its icon and count only. */
+ .count{display:none;}
+ @media (max-width:1100px){.long{display:none;}.count{display:inline;}}
  .tabs a:hover{color:var(--fg);}
  .tabs a.active{color:var(--accent-strong);border-bottom-color:var(--accent);font-weight:var(--weight-medium);}
  .actions{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);}

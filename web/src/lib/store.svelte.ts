@@ -48,6 +48,7 @@ class Store{
  /** Load full objects of courses that have running or unfinished tasks, for readable task names. */
  async loadTaskDetails(){
   const wanted=this.projects.filter(p=>courseStatus(p)!=='ready'&&!this.details[p.id]);
+  if(!wanted.length)return;
   const loaded=await Promise.allSettled(wanted.map(p=>api.getProject(p.id)));
   const next={...this.details};
   loaded.forEach(r=>{if(r.status==='fulfilled')next[r.value.id]=r.value;});

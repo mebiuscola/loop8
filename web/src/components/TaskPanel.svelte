@@ -1,11 +1,13 @@
 <script lang="ts">
+ import {onMount} from 'svelte';
  import StatusBadge from './StatusBadge.svelte';
  import {store} from '../lib/store.svelte';
  import {courseHref} from '../lib/router.svelte';
  import {statusWord} from '../lib/status';
 
  let {onclose}:{onclose:()=>void}=$props();
- $effect(()=>{store.loadTaskDetails();});
+ // Load once per opening. (An $effect here would track store.details and re-run after every load.)
+ onMount(()=>{store.loadTaskDetails();});
 
  function when(time?:string){
   if(!time)return '';
@@ -21,7 +23,7 @@
    {#each store.tasks as t (t.courseId+t.key)}
     <li class={t.kind}>
      <div class="main">
-      <div class="title"><span class="course">{t.courseName}</span> · {t.action}{#if t.target} · <span class="target">{t.target}</span>{/if}</div>
+      <div class="title"><span class="course">{t.courseName}</span>{' · '+t.action}{#if t.target}<span class="target">{' · '+t.target}</span>{/if}</div>
       {#if t.detail}<div class="detail">{t.detail}</div>{/if}
      </div>
      <div class="side">
