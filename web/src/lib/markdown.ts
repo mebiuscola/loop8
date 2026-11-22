@@ -3,7 +3,9 @@
 
 export type Inline=
  |{kind:'text';text:string}
- |{kind:'bold';text:string}
+ |{kind:'bold';parts:Inline[]}
+ /** Italics: in this course usually the title of a work. */
+ |{kind:'italic';parts:Inline[]}
  |{kind:'code';text:string}
  /** A reading passage page served by the backend (docs/API.md "reading-reference"). */
  |{kind:'reference';text:string;href:string}
@@ -12,31 +14,37 @@ export type Inline=
 
 export type Block=
  |{kind:'heading';level:number;parts:Inline[]}
- |{kind:'item';ordered:boolean;parts:Inline[]}
+ |{kind:'item';ordered:boolean;depth:number;parts:Inline[]}
  |{kind:'paragraph';parts:Inline[]}
+ |{kind:'quote';parts:Inline[]}
+ |{kind:'rule'}
  |{kind:'code';text:string}
  |{kind:'table';head:Inline[][];rows:Inline[][][]};
 
 const REFERENCE=/\[([^\]\n]+)\]\((\/api\/projects\/[^/\s)]+\/reading-reference\?ref=[A-Za-z0-9_-]+)\)/;
 const SESSION=/\[Session ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[^\]\n]*?SRT (\d{2,}):(\d{2}):(\d{2})[,.](\d{3}))?[^\]\n]*\]/;
-const BOLD=/\*\*([^*\n]+)\*\*/;
+// Bold may contain single-star italics, e.g. "**Achebe (*Things Fall Apart*)**".
+const BOLD=/\*\*((?:[^*\n]|\*(?!\*))+?)\*\*/;
+// One star on each side, not part of "**", with no space just inside the stars.
+const ITALIC=/(?<![*\w])\*(?![\s*])([^*\n]*?[^*\s])\*(?![*\w])/;
 const CODE=/`([^`\n]+)`/;
 
-/** Splits text into plain, bold, code and the two kinds of link, earliest match first. */
+/** Splits text into plain, bold, italic, code and the two kinds of link, earliest match first. */
 export function inline(text:string):Inline[]{
  const out:Inline[]=[];
  let rest=text;
  while(rest){
   const found=[
    {re:REFERENCE,m:rest.match(REFERENCE)},{re:SESSION,m:rest.match(SESSION)},
-   {re:BOLD,m:rest.match(BOLD)},{re:CODE,m:rest.match(CODE)},
+   {re:BOLD,m:rest.match(BOLD)},{re:ITALIC,m:rest.match(ITALIC)},{re:CODE,m:rest.match(CODE)},
   ].filter(x=>x.m).sort((a,b)=>a.m!.index!-b.m!.index!)[0];
   if(!found){out.push({kind:'text',text:rest});break;}
   const m=found.m!;
   if(m.index)out.push({kind:'text',text:rest.slice(0,m.index)});
   if(found.re===REFERENCE)out.push({kind:'reference',text:m[1],href:m[2]});
   else if(found.re===SESSION)out.push({kind:'class',sessionId:m[1],ms:m[2]===undefined?null:((+m[2]*60+ +m[3])*60+ +m[4])*1000+ +m[5]});
-  else if(found.re===BOLD)out.push({kind:'bold',text:m[1]});
+  else if(found.re===BOLD)out.push({kind:'bold',parts:inline(m[1])});
+  else if(found.re===ITALIC)out.push({kind:'italic',parts:inline(m[1])});
   else out.push({kind:'code',text:m[1]});
   rest=rest.slice(m.index!+m[0].length);
  }
@@ -70,8 +78,21 @@ export function blocks(text:string):Block[]{
   flushTable();
   let m;
   if(!line.trim()){flushPara();continue;}
+  if(/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)){flushPara();out.push({kind:'rule'});continue;}
+  // Consecutive "> " lines form one quote.
+  if((m=line.match(/^\s*>\s?(.*)$/))){
+   flushPara();const last=out.at(-1);
+   if(last?.kind==='quote')last.parts.push({kind:'text',text:'\n'},...inline(m[1]));else out.push({kind:'quote',parts:inline(m[1])});
+   continue;
+  }
   if((m=line.match(/^(#{1,6})\s+(.+)$/))){flushPara();out.push({kind:'heading',level:m[1].length,parts:inline(m[2])});continue;}
-  if((m=line.match(/^\s*(?:[-*•]|(\d+)[.)])\s+(.+)$/))){flushPara();out.push({kind:'item',ordered:!!m[1],parts:inline((m[1]?m[1]+'. ':'')+m[2])});continue;}
+  // Indentation of two (or more) spaces per level makes a sub-item; at most three levels are shown.
+  if((m=line.match(/^(\s*)(?:[-*•]|(\d+)[.)])\s+(.+)$/))){
+   flushPara();
+   const depth=Math.min(3,Math.floor(m[1].replace(/\t/g,'    ').length/2));
+   out.push({kind:'item',ordered:!!m[2],depth,parts:inline((m[2]?m[2]+'. ':'')+m[3])});
+   continue;
+  }
   para.push(line);
  }
  if(code)out.push({kind:'code',text:code.join('\n')});
