@@ -39,7 +39,7 @@ import {materialRouteConfigured} from './lib/page-rounds.mjs';
 import {testConnection,diagnosticError} from './lib/diagnostics.mjs';
 import {pipeline} from './lib/pipeline.mjs';
 import {mapPool,semaphore,serialWriter} from './lib/concurrency.mjs';
-import {mineruCloud} from './lib/mineru-cloud.mjs';
+import {parseReadingPdf,parseSourceOf} from './lib/reading-parse.mjs';
 import {contentListDocument,manualDocument,materialParts,contentHash} from './lib/materials.mjs';
 import {externalPptDocument,PPT_SCHEMA} from './lib/ppt-import.mjs';
 import {pptxSlideCount} from './lib/ppt-count.mjs';
@@ -115,23 +115,23 @@ async function updateReadingProject(job,change){
   await putClass(project);
  }finally{requestLocks.delete(job.id);}
 }
-async function runReading(job,file,settings){
+async function runReading(job,file,settings,force){
  const dir=classDir(job.id),archivePath=path.join(dir,'Parsed',file.id,'mineru_result.zip');
- let error='';
+ let error='',parseSource='';
  try{
-  const doc=await mineruCloud(settings,sourcePath(dir,file.stored),detail=>{job.progress=detail;},{source:{id:file.id,name:file.name,role:file.role},archivePath});
-  await save(path.join(dir,'Parsed',file.id,'blocks.json'),doc);
+  const doc=await parseReadingPdf(settings,sourcePath(dir,file.stored),{id:file.id,name:file.name,role:file.role},detail=>{job.progress=detail;},{archivePath,force});
+  await save(path.join(dir,'Parsed',file.id,'blocks.json'),doc);parseSource=parseSourceOf(doc);
  }catch(e){error=e.message;}
  await updateReadingProject(job,(project,current)=>{
   const other=readingJobs(job.id).find(item=>item!==job);
   current.parseStatus=error?(current.parsed?'ready':'failed'):'ready';
-  current.progress=error?'MinerU 未完成':'MinerU 已解析';
+  current.progress=error?'解析未完成':parseSource==='text-layer'?'已读取 PDF 自带文字':'MinerU 已解析';
   if(error)current.error=error;
-  else{current.parsed=file.id+'/blocks.json';current.parsedAt=new Date().toISOString();delete current.error;project.materialRevision++;}
+  else{current.parsed=file.id+'/blocks.json';current.parsedAt=new Date().toISOString();current.parseSource=parseSource;delete current.error;project.materialRevision++;}
   project.tasks[taskKey('reading',file.id)]={status:error?'error':'complete',...(error?{error}:{}),finished:new Date().toISOString()};
   project.status=other?'running':error?'error':'done';
   project.job={mode:'reading',sourceId:other?.sourceId||file.id};
-  project.stage=other?'MinerU 解析中':error?'MinerU 未完成':'MinerU 解析完成';
+  project.stage=other?'PDF 解析中':error?'PDF 解析未完成':'PDF 解析完成';
   project.error=other?'':error;
   job.finished=true;
  });
@@ -162,8 +162,8 @@ async function run(p,settings,{origin,fresh=false,mode='preparation',sessionId,s
     try{
     await stage(p,'解析 Reading · '+f.name);const archivePath=path.join(dir,'Parsed',f.id,'mineru_result.zip');let doc;
     let archive;try{archive=await readFile(archivePath);}catch(e){if(e.code!=='ENOENT')throw e;}
-    const source={id:f.id,name:f.name,role:f.role};doc=archive?(await import('./lib/materials.mjs')).archiveDocument(archive,source):await mineruCloud(settings,sourcePath(dir,f.stored),async detail=>{f.progress=detail;await stage(p,'解析 Reading · '+f.name+' · '+detail);},{source,archivePath,uploadGate:gate,signal});
-    f.parsed=f.id+'/blocks.json';await save(path.join(dir,'Parsed',f.parsed),doc);f.parseStatus='ready';await putClass(p);
+    const source={id:f.id,name:f.name,role:f.role};doc=archive?(await import('./lib/materials.mjs')).archiveDocument(archive,source):await parseReadingPdf(settings,sourcePath(dir,f.stored),source,async detail=>{f.progress=detail;await stage(p,'解析 Reading · '+f.name+' · '+detail);},{archivePath,uploadGate:gate,signal});
+    f.parsed=f.id+'/blocks.json';f.parseSource=parseSourceOf(doc);await save(path.join(dir,'Parsed',f.parsed),doc);f.parseStatus='ready';await putClass(p);
     }catch(e){f.parseStatus='failed';f.error=e.message;await putClass(p);throw e;}
    });const failed=parsed.find(r=>r.status==='rejected');if(failed&&settings.visionEnabled===false)throw failed.reason;
   }
@@ -572,14 +572,14 @@ const server=http.createServer(async(req,res)=>{
      const file=p.files.find(item=>item.id===options.sourceId);
      editableSource(id,file.id);
      if(readingJobs(id).length>=s.uploadConcurrency)throw Error('已达到本周 MinerU 并行上限，请等待一个文件完成。');
-     const key=readingKey(id,file.id),job={id,sourceId:file.id,progress:'等待上传'};
+     const key=readingKey(id,file.id),job={id,sourceId:file.id,progress:'准备解析'};
      p.tasks||={};
      p.tasks[taskKey('reading',file.id)]={status:'running',started:new Date().toISOString()};
-     p.status='running';p.error='';p.stage='MinerU 解析中';p.job={mode,sourceId:file.id};
+     p.status='running';p.error='';p.stage='PDF 解析中';p.job={mode,sourceId:file.id};
      file.parseStatus='running';file.progress=job.progress;delete file.error;
      await putClass(p);
      mineruJobs.set(key,job);
-     void runReading(job,file,s).catch(error=>console.error('MinerU result save failed:',error.message)).finally(()=>mineruJobs.delete(key));
+     void runReading(job,file,s,options.engine==='mineru'?'mineru':undefined).catch(error=>console.error('MinerU result save failed:',error.message)).finally(()=>mineruJobs.delete(key));
      return respond(res,202,p);
     }
     if(readingJobs(id).length)throw Error('本周有材料正在解析。请等待解析结果提交后再启动生成。');

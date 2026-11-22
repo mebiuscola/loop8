@@ -7,6 +7,8 @@ export interface AiParse{status?:string;stage?:string;error?:string;model?:strin
  missing?:number[];failed?:number[];incomplete?:number;pendingParts?:{page:number;parts:string[]}[];
  rounds?:{label:string;model?:string;success:number;total:number;status?:string}[];review?:{status?:string;completed?:number;total?:number;issues?:{batch?:number;error?:string}[]};}
 export interface SourceFile{id:string;name:string;sessionId?:string;role:'bb'|'ppt'|'reading'|'srt'|'audio'|string;parseStatus?:string;progress?:string;
+ /** Where a parsed Reading / BB PDF's text came from (absent for older parses and imports). */
+ parseSource?:'text-layer'|'mineru';
  size?:number;parsed?:boolean;error?:string;aiParse?:AiParse|null;externalAnalysis?:string;importSummary?:unknown;}
 export type Role='bb'|'ppt'|'reading';
 export interface MaterialDeletePlan{name:string;sharedOriginal?:boolean;}
@@ -133,8 +135,8 @@ export const api={
  importParsed:(id:string,sourceId:string,file:File)=>request<Project>(project(id)+'/parsed?source='+encodeURIComponent(sourceId),{method:'POST',headers:{'X-Parse-Format':/\.json$/i.test(file.name)?'json':'text'},body:file}),
  analysisUrl:(id:string,sourceId:string)=>project(id)+'/analysis?source='+encodeURIComponent(sourceId),
  pptSkillUrl:()=>'/api/ppt-skill',
- /** MinerU parsing of a Reading / BB PDF. */
- parsePdf:(id:string,sourceId:string)=>post<unknown>(project(id)+'/process',{mode:'reading',sourceId}),
+ /** Parses a Reading / BB PDF: its own text layer first, MinerU for scans; engine 'mineru' always uses MinerU. */
+ parsePdf:(id:string,sourceId:string,engine?:'mineru')=>post<unknown>(project(id)+'/process',{mode:'reading',sourceId,...(engine?{engine}:{})}),
  aiParse:(id:string,sourceId:string,options:{fresh?:true;retryIssues?:true;retryFailed?:true;teachingPart?:'translation'|'explanation'}={})=>post<unknown>(project(id)+'/ai-parse',{sourceId,...options}),
  aiPartial:(id:string,sourceId:string)=>request<PartialResults>(project(id)+'/ai-partial?source='+encodeURIComponent(sourceId)),
  aiPartialImport:(id:string,sourceId:string)=>post<Project>(project(id)+'/ai-partial-import',{sourceId,confirm:true}),

@@ -82,7 +82,7 @@
       <AccountCard kind="chatgpt" {model}/>
       <ApiCard {model}/>
       <section class="card">
-       <header><h2>MinerU</h2><p>参考文献 PDF 的云端解析。课件不会上传到 MinerU。</p></header>
+       <header><h2>MinerU</h2><p>扫描版参考文献的云端识别。自带文字的 PDF 直接读取文字，不上传、不占额度；课件不会上传到 MinerU。</p></header>
        <FieldList fields={mineruFields} draft={model.mineru}/>
        {#if model.saved.hasMineruToken}<label class="check"><input type="checkbox" bind:checked={model.mineru.clearMineruToken}/>保存时清除已存 Token</label>{/if}
        <div class="tests">
