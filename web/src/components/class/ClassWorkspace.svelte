@@ -1,6 +1,7 @@
 <script lang="ts">
  import {untrack} from 'svelte';
  import StatusBadge from '../StatusBadge.svelte';
+ import ErrorNote from '../ErrorNote.svelte';
  import ClassReader from './ClassReader.svelte';
  import {api,ApiError,type Project,type Session,type Transcript} from '../../lib/api';
  import {router,courseHref} from '../../lib/router.svelte';
@@ -157,7 +158,7 @@
    <StatusBadge kind={status.kind} text={status.text}/>
    {#if status.kind==='stale'&&session.generation}<span class="note">下面仍显示旧讲稿，更新后替换。</span>{/if}
    {#if uploading}<span class="note">{uploading}</span>{:else if uploadNote}<span class="note">{uploadNote}</span>{/if}
-   {#if actionError}<span class="error" role="alert">{actionError}</span>{/if}
+   {#if actionError}<ErrorNote text={actionError}/>{/if}
   </div>
 
   <div class="body">
@@ -211,7 +212,6 @@
  .menu-label{padding:var(--space-1) var(--space-3);font-size:var(--text-xs);color:var(--fg-muted);}
  .statusline{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--line);font-size:var(--text-sm);}
  .note{color:var(--fg-muted);}
- .error{color:var(--status-failed-fg);}
  .body{flex:1;min-height:0;position:relative;}
  .empty,.drop{max-width:560px;margin:var(--space-6) auto;padding:0 var(--space-4);}
  .drop{padding:var(--space-5);border:1px dashed var(--line-strong);border-radius:var(--radius-md);background:var(--bg-surface);}

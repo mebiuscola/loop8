@@ -1,6 +1,7 @@
 <script lang="ts">
  import Icon from './Icon.svelte';
  import RichText from './RichText.svelte';
+ import ErrorNote from './ErrorNote.svelte';
  import {api,ApiError,type Project,type ChatMessage} from '../lib/api';
  import {store} from '../lib/store.svelte';
  import {askContext} from '../lib/ask-context.svelte';
@@ -94,7 +95,7 @@
    </label>
   {/if}
   <textarea bind:value={question} onkeydown={keydown} rows="3" placeholder="输入问题（Ctrl+Enter 发送）" aria-label="问题" disabled={sending} maxlength="10000"></textarea>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if error}<p class="error-line"><ErrorNote text={error}/></p>{/if}
   <div class="send-row">
    <span class="progress" aria-live="polite">{progress}</span>
    <button class="btn btn-primary" type="submit" disabled={sending||!question.trim()}>提问</button>
@@ -124,7 +125,7 @@
  .chip-x:hover{background:var(--white);}
  select{flex:1;height:28px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);font-size:var(--text-sm);}
  textarea{resize:vertical;min-height:64px;padding:var(--space-2);border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);}
- .error{margin:0;font-size:var(--text-xs);color:var(--status-failed-fg);}
+ .error-line{margin:0;font-size:var(--text-xs);}
  .send-row{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);}
  .progress{font-size:var(--text-xs);color:var(--status-running-fg);}
 </style>

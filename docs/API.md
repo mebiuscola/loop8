@@ -110,6 +110,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | GET | `/api/projects/:id/preview-file?source=` | 预览 PDF |
 | POST | `/api/projects/:id/preview-pdf?source=` | 关联用户导出的 PDF（原始字节，≤150MB） |
 | POST | `/api/projects/:id/preview-clear?source=` | 清理预览 |
+| POST | `/api/projects/:id/ppt-page-preview` | 单页 PPT 试解析（用"单页 PPT 试解析"分配的模型，需图片输入）。体：`{sourceId, pageIndex}`（0 起）。返回 `202 {id, transport}`，`transport` 为 `acp` / `chatgpt` / `preview`，用第 7 节对应的 jobs 接口跟踪；结果 `result` 为 `{page:{paragraphs[{english,chinese}],closeReading}, warnings[]}`，只用于查看，不写入课程 |
 | GET | `/api/projects/:id/preview-source?source=` | PPTX 原件字节（浏览器内渲染用） |
 | GET | `/api/projects/:id/preview-fonts?source=` | PPTX 所需字体的本地匹配情况 |
 | GET | `/api/preview-font/:name` | 字体文件 |
