@@ -20,7 +20,7 @@
 
 <input class="hidden" type="file" accept=".pdf,application/pdf" bind:this={input} onchange={e=>{const el=e.currentTarget as HTMLInputElement;const f=el.files?.[0];el.value='';if(f)preview.associate(f);}}/>
 
-<Modal title="原页预览" {onclose} busy={preview.busy}>
+<Modal title="原页预览" {onclose} busy={preview.busy} closeLabel="关闭">
  <fieldset class="modes">
   <legend>显示方式</legend>
   {#each modes as [id,label,hint] (id)}

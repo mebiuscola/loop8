@@ -5,6 +5,7 @@
  import ErrorNote from '../ErrorNote.svelte';
  import CoursewareReader from './CoursewareReader.svelte';
  import ReferenceReader from './ReferenceReader.svelte';
+ import RetryDialog from './RetryDialog.svelte';
  import OriginalPage from './OriginalPage.svelte';
  import PreviewDialog from './PreviewDialog.svelte';
  import TrialDialog from './TrialDialog.svelte';
@@ -57,6 +58,8 @@
   return k==='ppt'?coursewareStatus(project,f,readers[id] as CR|null):referenceStatus(project,f,readers[id] as RR|null);
  };
  const current=$derived(file?readers[file.id]:null);
+ // Reference paragraphs without a translation yet (e.g. refused by a model); they can be finished with another model.
+ const untranslated=$derived(kind==='ref'&&current?(current as RR).summary.total-(current as RR).summary.completed:0);
  const status=$derived(file?statusOf(kind,file.id):null);
 
  // Columns the reader shows; remembered per kind.
@@ -115,8 +118,8 @@
   untrack(()=>{preview?.destroy();preview=next;});
   return ()=>next.destroy();
  });
- let dialog=$state<''|'preview'|'trial'|'enlarge'>(''),dialogPage=$state(0);
- function openDialog(kind:'preview'|'trial'|'enlarge',pageIndex=page-1){menuOpen=false;dialogPage=pageIndex;dialog=kind;}
+ let dialog=$state<''|'preview'|'trial'|'enlarge'|'retry'>(''),dialogPage=$state(0);
+ function openDialog(kind:'preview'|'trial'|'enlarge'|'retry',pageIndex=page-1){menuOpen=false;dialogPage=pageIndex;dialog=kind;}
 </script>
 
 <svelte:window onclick={outside} onkeydown={e=>{if(e.key==='Escape')menuOpen=false;}}/>
@@ -153,6 +156,11 @@
      <div class="menu-list" role="menu">
       {#if file&&kind==='ppt'}<a role="menuitem" href={'/api/projects/'+encodeURIComponent(project.id)+'/source?id='+encodeURIComponent(file.id)}>下载原件</a>{/if}
       {#if file&&kind==='ref'}<a role="menuitem" href={api.referenceFileUrl(project.id,file.id)} target="_blank" rel="noopener">打开原始 PDF <Icon name="external" size={12}/></a>{/if}
+      {#if file&&kind==='ref'&&untranslated&&status?.kind!=='running'&&status?.kind!=='stale'}
+       <div class="menu-sep" role="separator"></div>
+       <span class="menu-label">高级</span>
+       <button role="menuitem" onclick={()=>openDialog('retry')}>用其他模型补译…</button>
+      {/if}
       {#if file&&kind==='ppt'}
        <div class="menu-sep" role="separator"></div>
        <span class="menu-label">高级</span>
@@ -204,9 +212,10 @@
 </div>
 
 {#if dialog==='preview'&&preview}<PreviewDialog {preview} projectId={project.id} onclose={()=>dialog=''}/>{/if}
+{#if dialog==='retry'&&file&&kind==='ref'}<RetryDialog projectId={project.id} sourceId={file.id} fileName={file.name} remaining={untranslated} onclose={()=>dialog=''} onstarted={()=>{dialog='';store.refresh();}}/>{/if}
 {#if dialog==='trial'&&file}<TrialDialog projectId={project.id} sourceId={file.id} fileName={file.name} pageIndex={dialogPage} onclose={()=>dialog=''}/>{/if}
 {#if dialog==='enlarge'&&preview&&current&&kind==='ppt'}
- <Modal title={'第 '+(dialogPage+1)+' 页 · 原页'} onclose={()=>dialog=''} wide>
+ <Modal title={'第 '+(dialogPage+1)+' 页 · 原页'} onclose={()=>dialog=''} wide closeLabel="关闭">
   <OriginalPage projectId={project.id} reader={current as CR} pageIndex={dialogPage} mode={preview.mode} pdf={preview.pdf} pptx={preview.pptx} reload={preview.reload} large/>
  </Modal>
 {/if}

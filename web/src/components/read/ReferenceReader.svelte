@@ -42,12 +42,15 @@
   return {destroy(){observer.disconnect();}};
  }
 
- let quietUntil=0;
+ // Scroll position right after our own jump to a chosen page. While the view is still there,
+ // the chosen page stays shown (the last pages may not reach the top); any scrolling by the
+ // reader, however soon after the jump, updates it.
+ let jumpTop=-1;
  onMount(()=>{
   const visible=new Set<number>();
   const observer=new IntersectionObserver(entries=>{
    for(const e of entries){const n=Number((e.target as HTMLElement).dataset.page);if(e.isIntersecting)visible.add(n);else visible.delete(n);}
-   if(Date.now()<quietUntil||!visible.size)return;
+   if(!visible.size||Math.abs(scroller.scrollTop-jumpTop)<2)return;
    onpage(Math.min(...visible));
   },{root:scroller,rootMargin:'-40px 0px -60% 0px'});
   const watch=()=>scroller.querySelectorAll('section[data-page]').forEach(s=>observer.observe(s));
@@ -56,13 +59,20 @@
   return ()=>{observer.disconnect();mo.disconnect();};
  });
 
+ // Go to a page chosen in the toolbar once — also when its section only appears later — but
+ // never again when the data refreshes (PDF loaded, translation progress), so the reader's own
+ // scrolling is kept.
+ const sectionCount=$derived(groups.pages.length);
+ let applied=-1;
  $effect(()=>{
-  const {page}=jump;groups.pages.length;
+  const {page,seq}=jump;sectionCount;
+  if(seq===applied)return;
   const target=scroller?.querySelector<HTMLElement>(`section[data-page="${page}"]`);
   if(!target)return;
-  quietUntil=Date.now()+600;
+  applied=seq;
   const header=scroller.querySelector<HTMLElement>('.colhead')?.offsetHeight||0;
   scroller.scrollTo({top:page===1?0:target.offsetTop-header});
+  jumpTop=scroller.scrollTop;
  });
 </script>
 

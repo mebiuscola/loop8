@@ -132,6 +132,23 @@ export class SettingsModel{
   return id;
  }
 
+ /** After one page is saved, take the new saved values without losing other pages' unsaved changes. */
+ private settle(section:'services'|'assign'|'preview'|'advanced'){
+  const services=section==='services';
+  const profiles=services?[]:this.profiles.filter(p=>this.profileDirty(p)).map(p=>$state.snapshot(p) as ModelProfile);
+  const acpPath=services?'':this.acpPath,mineru=services?null:$state.snapshot(this.mineru);
+  const assign=section==='assign'?null:$state.snapshot(this.assign);
+  const preview=section==='preview'?null:$state.snapshot(this.preview);
+  const advanced=section==='advanced'?null:$state.snapshot(this.advanced);
+  this.adopt(this.saved!);
+  for(const p of profiles){const i=this.profiles.findIndex(x=>x.id===p.id);if(i>=0)this.profiles[i]=p;else this.profiles.push(p);}
+  this.acpPath=acpPath;
+  if(mineru)this.mineru=mineru;
+  if(assign)this.assign=assign;
+  if(preview)this.preview=preview;
+  if(advanced)this.advanced=advanced;
+ }
+
  async save(section:'services'|'assign'|'preview'|'advanced'){
   if(!this.saved)return;
   this.saving=true;this.error='';this.message='';
@@ -148,7 +165,7 @@ export class SettingsModel{
     await this.send({section:'routes',modelRoutes:routes,fallbackProfileId:fallback,fallbackEnabled:a.fallbackEnabled});
    }else if(section==='preview')await this.send({section:'preview',...$state.snapshot(this.preview)});
    else await this.send({section:'advanced',...Object.fromEntries(Object.entries($state.snapshot(this.advanced)).map(([k,v])=>[k,typeof v==='string'&&/^\d+$/.test(v)?Number(v):v]))});
-   this.adopt(this.saved!);this.message='已保存。';
+   this.settle(section);this.message='已保存。';
   }catch(e){
    this.error=readable(e instanceof ApiError?e.message:(e as Error).message);
    // Keep what did get saved, without losing the remaining drafts.

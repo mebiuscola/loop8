@@ -78,6 +78,8 @@ export const api={
  /** Starts a background generation; the task then shows up in project.tasks. */
  process:(id:string,mode:ProcessMode,ref?:string)=>post<unknown>(project(id)+'/process',{mode,...(ref?(mode==='session'||mode==='analysis'?{sessionId:ref}:{sourceId:ref}):{})}),
  /** Weekly Deep Dive over the chosen classes (only classes that have a transcript). */
+ /** Translates a reference; with a profile, the remaining paragraphs use that model this time only. */
+ processReference:(id:string,sourceId:string,referenceProfileId?:string)=>post<unknown>(project(id)+'/process',{mode:'reference',sourceId,...(referenceProfileId?{referenceProfileId}:{})}),
  processWeek:(id:string,sessionIds:string[])=>post<unknown>(project(id)+'/process',{mode:'week',sessionIds}),
  /** A generated Markdown document (Deep Dive, transcript) as text. */
  outputText:async(id:string,name:string,scope:string)=>{

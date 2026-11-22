@@ -21,6 +21,7 @@
  const href=(s:Session,paragraph=0)=>courseHref(project.id,'class',encodeURIComponent(s.id)+(paragraph?'/p/'+(paragraph+1):''));
 
  const status=$derived(session?scriptStatus(project,session):null);
+ const task=$derived(session?project.tasks?.['script:'+session.id]:undefined);
  const srt=$derived(session?project.files.find(f=>f.id===session.srtId):undefined);
  const recording=$derived(session?.audio?project.files.find(f=>f.id===session.audio!.fileId):undefined);
 
@@ -158,7 +159,7 @@
    <StatusBadge kind={status.kind} text={status.text}/>
    {#if status.kind==='stale'&&session.generation}<span class="note">下面仍显示旧讲稿，更新后替换。</span>{/if}
    {#if uploading}<span class="note">{uploading}</span>{:else if uploadNote}<span class="note">{uploadNote}</span>{/if}
-   {#if actionError}<ErrorNote text={actionError}/>{/if}
+   {#if actionError}<ErrorNote text={actionError}/>{:else if status.kind==='failed'&&task?.error}<ErrorNote text={task.error}/>{/if}
   </div>
 
   <div class="body">

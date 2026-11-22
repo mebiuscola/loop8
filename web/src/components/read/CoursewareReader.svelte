@@ -21,13 +21,16 @@
  const template=$derived(shown.map(c=>c==='original'?'minmax(280px,1.15fr)':c==='translation'?'minmax(260px,1fr)':'minmax(220px,.85fr)').join(' ')||'1fr');
 
 
- // Report the page at the top of the view; ignore our own scrolling for a moment after a jump.
- let quietUntil=0;
+ // Report the page at the top of the view.
+ // Scroll position right after our own jump to a chosen page. While the view is still there,
+ // the chosen page stays shown (the last pages may not reach the top); any scrolling by the
+ // reader, however soon after the jump, updates it.
+ let jumpTop=-1;
  onMount(()=>{
   const visible=new Map<number,number>();
   const observer=new IntersectionObserver(entries=>{
    for(const e of entries){const n=Number((e.target as HTMLElement).dataset.page);if(e.isIntersecting)visible.set(n,e.boundingClientRect.top);else visible.delete(n);}
-   if(Date.now()<quietUntil||!visible.size)return;
+   if(!visible.size||Math.abs(scroller.scrollTop-jumpTop)<2)return;
    onpage(Math.min(...visible.keys()));
   },{root:scroller,rootMargin:'-40px 0px -60% 0px'});
   scroller.querySelectorAll('section[data-page]').forEach(s=>observer.observe(s));
@@ -38,9 +41,9 @@
   const {page}=jump;
   const target=scroller?.querySelector<HTMLElement>(`section[data-page="${page}"]`);
   if(!target)return;
-  quietUntil=Date.now()+600;
   const header=scroller.querySelector<HTMLElement>('.colhead')?.offsetHeight||0;
   scroller.scrollTo({top:page===1?0:target.offsetTop-header});
+  jumpTop=scroller.scrollTop;
  });
 
  const pageTypeLabel:Record<string,string>={cover:'封面',agenda:'目录',section:'章节页',content:'',quote:'引文',image:'图片',ending:'结尾'};

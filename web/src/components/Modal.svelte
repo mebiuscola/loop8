@@ -1,7 +1,8 @@
 <script lang="ts">
- // A modal dialog. It opens when mounted; Escape or "取消" calls onclose (unless busy).
+ // A modal dialog. It opens when mounted; Escape or the close button calls onclose (unless busy).
+ // The close button says "取消" where the dialog asks for a decision, "关闭" where it only shows something.
  import {onMount,type Snippet} from 'svelte';
- let {title,onclose,busy=false,wide=false,children,actions}:{title:string;onclose:()=>void;busy?:boolean;wide?:boolean;children:Snippet;actions?:Snippet}=$props();
+ let {title,onclose,busy=false,wide=false,closeLabel='取消',children,actions}:{title:string;onclose:()=>void;busy?:boolean;wide?:boolean;closeLabel?:string;children:Snippet;actions?:Snippet}=$props();
  let dialog=$state<HTMLDialogElement>();
  onMount(()=>{dialog?.showModal();return ()=>dialog?.close();});
 </script>
@@ -10,7 +11,7 @@
  <h2>{title}</h2>
  <div class="content">{@render children()}</div>
  <div class="actions">
-  <button class="btn btn-quiet" type="button" onclick={onclose} disabled={busy}>取消</button>
+  <button class="btn btn-quiet" type="button" onclick={onclose} disabled={busy}>{closeLabel}</button>
   {#if actions}{@render actions()}{/if}
  </div>
 </dialog>

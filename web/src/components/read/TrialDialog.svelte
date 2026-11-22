@@ -19,7 +19,7 @@
  onMount(()=>{start();return ()=>{if(run.state.running)run.state.cancel();};});
 </script>
 
-<Modal title="单页试解析" {onclose} wide>
+<Modal title="单页试解析" {onclose} wide closeLabel="关闭">
  <p class="label">{fileName} · 第 {pageIndex+1} 页 · 结果只用于查看，不会写入课程。</p>
  <JobView job={run.state}/>
  {#if result}
