@@ -1,5 +1,5 @@
 // Status of each Deep Dive in the six status words (docs/IA-PROPOSAL.md §2).
-// Freshness follows public/workflow.js (analysisState, weeklyState) exactly, so the
+// Freshness follows lib/workflow.mjs (analysisState, weeklyState) exactly, so the
 // new frontend and the server agree on what is out of date.
 import type {Project,Session} from './api';
 import {taskStatus,type StatusKind} from './status';

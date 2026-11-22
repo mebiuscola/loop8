@@ -7,7 +7,7 @@ import os from 'node:os';
 
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 
-test('new frontend is served at / with a strict CSP, the old one at /legacy/, and no path traversal',async()=>{
+test('new frontend is served at / with a strict CSP, old addresses redirect, old files are gone, and no path traversal',async()=>{
  const temp=await mkdtemp(path.join(os.tmpdir(),'classroom-next-'));
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:temp,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});
  let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
@@ -44,13 +44,15 @@ test('new frontend is served at / with a strict CSP, the old one at /legacy/, an
    assert.doesNotMatch(await r.text(),/createServer|"version"/);
   }
 
-  // The old frontend stays reachable at /legacy/ until it is removed.
-  const legacy=await get('/legacy');
-  assert.equal(legacy.status,302);
-  assert.equal(legacy.headers.get('location'),'/legacy/');
-  const legacyPage=await get('/legacy/');
-  assert.equal(legacyPage.status,200);
-  assert.match(await legacyPage.text(),/src="\/app\.js"/);
+  // The old frontend was removed; its address leads to the new one, and its files are gone.
+  for(const old of ['/legacy','/legacy/']){
+   const r=await get(old);
+   assert.equal(r.status,302,old);
+   assert.equal(r.headers.get('location'),'/',old);
+  }
+  for(const old of ['/app.js','/style.css','/settings.js','/reader.js','/workflow.js'])assert.equal((await get(old)).status,404,old);
+  // Standalone pages the server still needs keep their files.
+  for(const kept of ['/reading-reference.js','/reading-reference.css','/pptx-frame.js','/parse-render.js'])assert.equal((await get(kept)).status,200,kept);
  }finally{
   child.kill();await pause(100);await rm(temp,{recursive:true,force:true});
  }

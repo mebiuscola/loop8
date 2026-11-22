@@ -45,7 +45,7 @@ import {externalPptDocument,PPT_SCHEMA} from './lib/ppt-import.mjs';
 import {pptxSlideCount} from './lib/ppt-count.mjs';
 import {migrateWeek,addSession,artifact,stale,validFocus} from './lib/week.mjs';
 import {buildContext,classroom,sessionDeepDive,preparation,publish,weekly} from './lib/study.mjs';
-import {analysisState,taskKey} from './public/workflow.js';
+import {analysisState,taskKey} from './lib/workflow.mjs';
 import {pptPages,pageText,pageImages} from './lib/pages.mjs';
 import {bodyParagraphs} from './lib/reader.mjs';
 import {storeSource,originalName,sourcePath,migrateSourceNames} from './lib/storage.mjs';
@@ -665,7 +665,7 @@ const server=http.createServer(async(req,res)=>{
   }
   if(method==='GET'&&['/pptx-frame.html','/parse-render.html'].includes(url.pathname)){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob:; worker-src 'self' blob:; font-src 'self' data: blob:; img-src 'self' data: blob:; media-src blob: data:; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'",'X-Content-Type-Options':'nosniff'});return res.end(await readFile(path.join(ROOT,'public',url.pathname.slice(1))));}
   // The new frontend: its page at /, its built files under /next/. /next and /next/ (the
-  // address used during the redesign) lead to /; the old frontend stays at /legacy/ for now.
+  // address used during the redesign) lead to /.
   if(method==='GET'&&(url.pathname==='/next'||url.pathname==='/next/'||url.pathname==='/next/index.html')){res.writeHead(302,{Location:'/'});return res.end();}
   if(method==='GET'&&(url.pathname==='/'||url.pathname.startsWith('/next/'))){
    const root=path.join(ROOT,'public','next'),relative=url.pathname==='/'?'index.html':decodeURIComponent(url.pathname.slice('/next/'.length)),target=path.resolve(root,relative),checked=path.relative(root,target);if(!checked||checked.startsWith('..')||path.isAbsolute(checked))return respond(res,400,{error:'无效资源路径。'});
@@ -673,8 +673,10 @@ const server=http.createServer(async(req,res)=>{
    let bytes;try{bytes=await readFile(target);}catch{return respond(res,404,{error:relative==='index.html'?'新界面尚未构建。':'未找到资源。'});}
    res.writeHead(200,{'Content-Type':type||'application/octet-stream','Cache-Control':relative==='index.html'?'no-cache':'max-age=31536000, immutable','Content-Security-Policy':"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'",'X-Content-Type-Options':'nosniff'});return res.end(bytes);
   }
-  if(method==='GET'&&url.pathname==='/legacy'){res.writeHead(302,{Location:'/legacy/'});return res.end();}
-  if(method==='GET'&&['/legacy/','/app.js','/settings.js','/settings.css','/acp-workflow.js','/acp.js','/acp-profile.js','/profiles.js','/reference-reader.js','/qa-window.js','/transcript.js','/reader.js','/qa-scope.js','/workflow.js','/parse-render.js','/render-audit.js','/pptx-frame.js','/style.css','/reading-reference.js','/reading-reference.css','/folio.css','/reading-notices.js'].includes(url.pathname)){const file=url.pathname==='/legacy/'?'index.html':url.pathname.slice(1);res.writeHead(200,{'Content-Type':file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.css')?'text/css':'text/javascript','Content-Security-Policy':"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; object-src 'none'; frame-src 'self'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff'});return res.end(await readFile(path.join(ROOT,'public',file)));}
+  // The old frontend was removed in 2.26.0; its address leads to the new one.
+  if(method==='GET'&&(url.pathname==='/legacy'||url.pathname==='/legacy/')){res.writeHead(302,{Location:'/'});return res.end();}
+  // Standalone pages' scripts and styles: page rendering (parse-render, pptx-frame) and the citation viewer.
+  if(method==='GET'&&['/parse-render.js','/render-audit.js','/pptx-frame.js','/reading-reference.js','/reading-reference.css'].includes(url.pathname)){const file=url.pathname.slice(1);res.writeHead(200,{'Content-Type':file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.css')?'text/css':'text/javascript','Content-Security-Policy':"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; object-src 'none'; frame-src 'self'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff'});return res.end(await readFile(path.join(ROOT,'public',file)));}
   respond(res,404,{error:'未找到页面。'});
  }catch(e){respond(res,400,{error:e.message});}finally{if(lockedId){requestLocks.delete(lockedId);deletingMaterials.delete(lockedId);}}
 });

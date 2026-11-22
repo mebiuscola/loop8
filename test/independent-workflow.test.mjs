@@ -5,7 +5,7 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,rm,readFile,mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {scriptState,analysisState,weeklyState} from '../public/workflow.js';
+import {scriptState,analysisState,weeklyState} from '../lib/workflow.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {openApp,go,waitFor,waitText,click} from './helpers/app.mjs';
 import {pipeline} from '../lib/pipeline.mjs';

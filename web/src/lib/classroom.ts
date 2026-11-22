@@ -4,7 +4,7 @@ import {taskStatus,type StatusKind} from './status';
 
 export interface ClassStatus{kind:StatusKind;text:string;}
 
-/** Same freshness rule as public/workflow.js scriptState. */
+/** Same freshness rule as lib/workflow.mjs scriptState. */
 export function scriptStale(project:Project,s:Session){
  return !!s.generation&&(s.materialRevision!==project.materialRevision||s.outputRevision!==s.revision);
 }

@@ -45,7 +45,7 @@ The product is named Classroom. The user chose a unified deep-teal and light-san
 
 - Existing application: server.mjs, public/, lib/, skills/ and test/.
 - Local course sources and outputs: data/classes/; these are private user materials, not distributable sample assets.
-- Current implemented design: public/style.css and public/folio.css, recorded in DESIGN.md and .impeccable/design.json.
+- Current implemented design: the new frontend in web/ (tokens in web/src/styles/tokens.css; information architecture in docs/IA-PROPOSAL.md). DESIGN.md and .impeccable/ describe the removed old interface.
 - Representative browser captures from v2.25.9 are kept in the workspace's work/v2259-layout/ directory.
 - The user's confirmed workflow and constraints are recorded in this conversation. Do not invent testimonials, customers, benchmarks or licensing claims.
 

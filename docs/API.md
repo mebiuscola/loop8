@@ -23,8 +23,8 @@
 |---|---|---|
 | GET | `/` | 新前端页面（`public/next/index.html`） |
 | GET | `/next`、`/next/`、`/next/index.html` | `302` 跳到 `/`（地址栏中的 `#/…` 保留） |
-| GET | `/legacy` | `302` 跳到 `/legacy/` |
-| GET | `/legacy/` 及旧前端静态文件 | 旧前端，暂留到旧界面浏览器测试改写完成后删除 |
+| GET | `/legacy`、`/legacy/` | `302` 跳到 `/`（旧前端已在 v2.26.0 删除） |
+| GET | `/parse-render.*`、`/render-audit.js`、`/pptx-frame.*`、`/reading-reference.js`、`/reading-reference.css` | 独立页面：原页渲染、实时 PPTX 预览、引文原文对照 |
 | GET | `/next/…` | 新前端构建产物，来自 `public/next/`。`index.html` 不缓存，其余带哈希的资源长期缓存；CSP 不允许内联脚本。未构建时返回 `404 {error:"新界面尚未构建。"}`；越出目录的路径返回 `400` |
 
 ## 1. 每周课程（项目）
