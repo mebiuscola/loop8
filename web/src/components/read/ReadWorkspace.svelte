@@ -34,16 +34,20 @@
 
  const href=(k:Kind,sourceId?:string,page=1)=>courseHref(project.id,'read',k+(sourceId?'/'+encodeURIComponent(sourceId)+'/p/'+page:''));
 
- // Reading data, cached per material and reloaded when its task changes state.
+ // Reading data, cached per material and kind ("ppt:<id>" / "ref:<id>") and reloaded when its task
+ // changes state. The kind is part of the key: a material whose role changed must never be shown
+ // with the other kind's data.
+ const keyOf=(k:Kind,id:string)=>k+':'+id;
  let readers=$state<Record<string,CR|RR|null>>({});
  let loadError=$state<Record<string,string>>({});
  const taskSignature=$derived(JSON.stringify(project.tasks||{}));
  let lastSignature='';
  async function load(k:Kind,id:string,force=false){
-  if(!force&&id in readers)return;
-  readers[id]=readers[id]??null;
-  try{readers[id]=k==='ppt'?await api.reader(project.id,id):await api.referenceReader(project.id,id);delete loadError[id];}
-  catch(e){loadError[id]=e instanceof ApiError?e.message:String(e);}
+  const key=keyOf(k,id);
+  if(!force&&key in readers)return;
+  readers[key]=readers[key]??null;
+  try{readers[key]=k==='ppt'?await api.reader(project.id,id):await api.referenceReader(project.id,id);delete loadError[key];}
+  catch(e){loadError[key]=e instanceof ApiError?e.message:String(e);}
  }
  $effect(()=>{
   const sig=taskSignature,force=sig!==lastSignature&&lastSignature!=='';lastSignature=sig;
@@ -54,10 +58,11 @@
 
  const statusOf=(k:Kind,id:string):MaterialStatus=>{
   const f=files[k].find(x=>x.id===id)!;
-  if(loadError[id])return {kind:'failed',text:'读取失败'};
-  return k==='ppt'?coursewareStatus(project,f,readers[id] as CR|null):referenceStatus(project,f,readers[id] as RR|null);
+  const key=keyOf(k,id);
+  if(loadError[key])return {kind:'failed',text:'读取失败'};
+  return k==='ppt'?coursewareStatus(project,f,readers[key] as CR|null):referenceStatus(project,f,readers[key] as RR|null);
  };
- const current=$derived(file?readers[file.id]:null);
+ const current=$derived(file?readers[keyOf(kind,file.id)]:null);
  // Reference paragraphs without a translation yet (e.g. refused by a model); they can be finished with another model.
  const untranslated=$derived(kind==='ref'&&current?(current as RR).summary.total-(current as RR).summary.completed:0);
  const status=$derived(file?statusOf(kind,file.id):null);
@@ -194,8 +199,8 @@
     <p>在"概览"中添加文件后会出现在这里。</p>
     <a class="btn btn-primary" href={courseHref(project.id,'overview')}>去概览添加文件</a>
    </div>
-  {:else if file&&loadError[file.id]}
-   <div class="empty"><h2>无法读取这份材料</h2><p>{loadError[file.id]}</p><button class="btn" onclick={()=>load(kind,file.id,true)}>重试</button></div>
+  {:else if file&&loadError[keyOf(kind,file.id)]}
+   <div class="empty"><h2>无法读取这份材料</h2><p>{loadError[keyOf(kind,file.id)]}</p><button class="btn" onclick={()=>load(kind,file.id,true)}>重试</button></div>
   {:else if !current}
    <p class="loading">正在读取…</p>
   {:else if kind==='ppt'}

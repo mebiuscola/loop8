@@ -22,7 +22,9 @@
  const materials=$derived(project.files.filter(f=>f.role in order).sort((a,b)=>order[a.role]-order[b.role]));
 
  // ---- reading status of each material (same data as the reading page) ----
- let readers=$state<Record<string,CoursewareReader|ReferenceReader|null>>({});
+ // Each entry remembers the role it was read for: after a role change the row must not be given
+ // the other kind's data (a courseware row given reference data broke the whole page).
+ let readers=$state<Record<string,{role:string;reader:CoursewareReader|ReferenceReader}>>({});
  const signature=$derived(JSON.stringify([project.tasks||{},project.materialRevision,materials.map(f=>[f.id,f.role,f.parsed,f.parseStatus,f.aiParse?.status,f.aiParse?.completed])]));
  let last='';
  $effect(()=>{
@@ -30,7 +32,8 @@
   untrack(()=>{
    for(const f of materials){
     const load=f.role==='ppt'?api.reader(project.id,f.id):f.role==='reading'&&f.parsed?api.referenceReader(project.id,f.id):null;
-    if(load)load.then(r=>readers[f.id]=r,()=>{/* the row shows "读取中" and the reading page shows the error */});
+    const role=f.role;
+    if(load)load.then(reader=>readers[f.id]={role,reader},()=>{/* the row shows "读取中" and the reading page shows the error */});
    }
   });
  });
@@ -145,7 +148,7 @@
     </div>
    {/if}
    {#each materials as f (f.id)}
-    <MaterialRow {project} file={f} reader={readers[f.id]} {locked}/>
+    <MaterialRow {project} file={f} reader={readers[f.id]?.role===f.role?readers[f.id].reader:null} {locked}/>
    {:else}
     <div class="empty">
      <p>还没有课件或参考文献。点"＋ 添加文件"，或把文件拖到这个页面。</p>
