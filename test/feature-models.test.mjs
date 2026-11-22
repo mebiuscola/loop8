@@ -9,6 +9,8 @@ import {resolveModel,validateModelRouting,modelIdentity} from '../lib/model-rout
 import {completePptPage} from '../lib/ppt-response.mjs';
 import {resetPptTeaching} from '../lib/ppt-cache.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
+import {openApp,openAsk,go,reload,waitFor,waitText,click,fill} from './helpers/app.mjs';
+const until=async check=>{for(let i=0;i<300;i++){const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,20));}throw Error('Timed out');};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function validPdf(pages=1){
  const objects=['<< /Type /Catalog /Pages 2 0 R >>',''],kids=[];
@@ -55,13 +57,26 @@ test('server keeps profile secrets private, translates a reference only, isolate
   const answer=await api(route+'/ask',{question:'What is evidence?',scope:'preparation',focus:{kind:'file',sourceId:a.id}});assert(answer.answer.includes('reading-reference?ref=r-'));const ask=seen.at(-1);assert.equal(ask.model,'asker');assert(ask.input.passages.every(v=>v.sourceId===a.id));assert(!JSON.stringify(ask.input).includes('UNRELATED'));assert.equal(ask.input.sourceNotes.length,0);
   const md=await (await fetch(base+route+'/output?scope='+encodeURIComponent('reference:'+a.id)+'&name=Bilingual.md')).text();assert(md.startsWith('# A.pdf'));
   let browser=true;try{await browserExecutable();}catch{browser=false;}if(browser){
-   ui=await launchRenderer(base,{});await ui.screenshot(1500,1000);await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");const wait=async expression=>{for(let i=0;i<220;i++){try{if(await ui.evaluate(expression))return;}catch{}await sleep(40);}throw Error('UI timeout: '+expression);};await wait("!!document.querySelector('#workspace')&&!document.querySelector('#workspace').hidden");
-   await ui.evaluate("document.querySelector('#surface-reading').click();true");await wait("!document.querySelector('#material-reference').hidden");await ui.evaluate("document.querySelector('#material-reference').click();true");await wait("document.querySelector('#reference-canvas').dataset.page==='0'&&document.querySelector('#reference-paragraphs').textContent.includes('文献中文译文')");assert.equal(await ui.evaluate("document.querySelector('#ask-kind').value"),'reference');await wait("document.querySelector('#process').textContent.includes('文献翻译')");
-   if(process.env.CLASSROOM_MODEL_EVIDENCE){await mkdir(process.env.CLASSROOM_MODEL_EVIDENCE,{recursive:true});await writeFile(path.join(process.env.CLASSROOM_MODEL_EVIDENCE,'Reference-reading.png'),await ui.screenshot(1500,1000));}
-   await ui.evaluate("document.querySelector('#qa-launch').click();true");const width=await ui.evaluate("document.querySelector('.qa').getBoundingClientRect().width");await ui.evaluate("document.querySelector('.qa-resize[data-edge=left]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));true");assert(await ui.evaluate("document.querySelector('.qa').getBoundingClientRect().width")>width+15);await ui.evaluate("document.querySelector('#qa-maximize').click();true");assert(await ui.evaluate("document.querySelector('.qa').getBoundingClientRect().width>innerWidth-20"));await ui.evaluate("document.querySelector('#qa-maximize').click();true");assert(await ui.evaluate("document.querySelector('.qa').getBoundingClientRect().width")<800);
-   await ui.evaluate(`(()=>{const f=document.querySelector('#ask-file');f.value='${b.id}';f.dispatchEvent(new Event('change'));const s=document.querySelector('#ask-scope');s.value='file';s.dispatchEvent(new Event('change'));return true;})()`);assert.equal(await ui.evaluate("document.querySelectorAll('#chat .message').length"),0,'history from another file is not mixed in');await ui.evaluate("document.querySelector('#question').value='Explain this reference';document.querySelector('#ask-form').requestSubmit();true");await wait("document.querySelectorAll('#chat .message').length===2");assert(seen.at(-1).input.passages.every(v=>v.sourceId===b.id));
-   if(process.env.CLASSROOM_MODEL_EVIDENCE){await ui.evaluate("document.querySelector('#qa-layout').click();true");await sleep(150);await writeFile(path.join(process.env.CLASSROOM_MODEL_EVIDENCE,'Ask-reference.png'),await ui.screenshot(1500,1000));}
-   await ui.evaluate("document.querySelector('#qa-toggle').click();document.querySelector('#settings-open').click();true");await wait("document.querySelector('#settings').open&&document.querySelectorAll('[data-model-id]').length>=3");await ui.evaluate("document.querySelector('[data-settings-section=routes]').click();true");assert.equal(await ui.evaluate("document.querySelector('[data-task=referenceTranslation]').value"),'translator');await ui.evaluate("document.querySelector('[data-settings-section=models]').click();document.querySelector('[data-model-id=translator]').click();true");assert.equal(await ui.evaluate("document.querySelector('[data-profile=translator] [data-field=apiKey]').value"),'');if(process.env.CLASSROOM_MODEL_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_MODEL_EVIDENCE,'Settings.png'),await ui.screenshot(1500,1000));await ui.evaluate("document.querySelector('#settings').close();true");
+   ui=await launchRenderer(base,{});const course='/w/'+encodeURIComponent(p.id);
+   await openApp(ui,course+'/read/ref/'+encodeURIComponent(a.id)+'/p/1',{width:1500,height:1000});
+   await waitText(ui,'文献中文译文','main',{timeout:20000});
+   await waitFor(ui,"[...document.querySelectorAll('main section[data-page] canvas')].some(c=>!!c.style.width)",{timeout:20000,label:'original PDF page drawn'});
+   if(process.env.CLASSROOM_MODEL_EVIDENCE){await mkdir(process.env.CLASSROOM_MODEL_EVIDENCE,{recursive:true});await writeFile(path.join(process.env.CLASSROOM_MODEL_EVIDENCE,'Reference-reading.png'),await ui.screenshot(1500,1000));await ui.screenshot(1500,1000);}
+   // Asking from another reference: the question is about that reference's page only.
+   await go(ui,'#'+course+'/read/ref/'+encodeURIComponent(b.id)+'/p/1');
+   await openAsk(ui);
+   await waitText(ui,'B.pdf · 第 1 页','.ask');
+   const asked=(await api(route)).chat.length;
+   await fill(ui,'问题','Explain this reference');await click(ui,'提问','.ask button[type=submit]');
+   await until(async()=> (await api(route)).chat.length===asked+2);
+   assert(seen.at(-1).input.passages.length&&seen.at(-1).input.passages.every(v=>v.sourceId===b.id),'only the focused reference is sent');
+   if(process.env.CLASSROOM_MODEL_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_MODEL_EVIDENCE,'Ask-reference.png'),await ui.screenshot(1500,1000));
+   await go(ui,'#/settings');await click(ui,'模型分配','.nav button');
+   await waitFor(ui,"document.querySelector('#route-referenceTranslation')?.value==='translator'",{label:'reference translation route'});
+   await click(ui,'服务与账号','.nav button');await click(ui,/^translator/,'button.summary');
+   assert.equal(await ui.evaluate("[...document.querySelectorAll('main input[type=password]')].every(e=>e.value==='')"),true);
+   assert(!(await ui.evaluate('document.documentElement.outerHTML')).includes('secret-0'),'saved keys never reach the page');
+   if(process.env.CLASSROOM_MODEL_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_MODEL_EVIDENCE,'Settings.png'),await ui.screenshot(1500,1000));
   }
   const oldBytes=await readFile(path.join(data,'classes',p.id,'Source',a.stored));state=await api(route+'/material-role',{sourceId:a.id,role:'ppt'});assert.equal(state.files.find(f=>f.id===a.id).stored,a.stored);const oldRef=answer.answer.match(/ref=(r-[\w-]+)/)[1];assert.equal((await fetch(base+route+'/reading-reference-data?ref='+oldRef)).status,200,'changing purpose preserves the original citation');assert.equal(state.files.find(f=>f.id===a.id).parsed,a.id+'/blocks.json');state=await api(route+'/material-role',{sourceId:a.id,role:'reading'});assert.equal(state.files.find(f=>f.id===a.id).referenceTranslation.generation,generation);assert((await readFile(path.join(data,'classes',p.id,'Source',a.stored))).equals(oldBytes));
   const lesson=(await api(route+'/sessions',{title:'Lecture'})).session;const subtitle=await fetch(base+route+'/upload',{method:'POST',headers:{'x-file-role':'srt','x-file-name':'Class.srt','x-session-id':lesson.id},body:'1\n00:00:01,000 --> 00:00:02,000\nLecturer: Classroom evidence stays separate.'});assert.equal(subtitle.status,201);await api(route+'/process',{mode:'session',sessionId:lesson.id});for(let i=0;i<200;i++){state=await api(route);if(state.status!=='running')break;await sleep(20);}assert.equal(state.status,'done',state.error);assert.equal(seen.find(r=>r.system.includes('Reconstruct classroom')).model,'default');assert.equal(seen.find(r=>r.system.includes('Paragraph translation')).model,'translator');
@@ -83,40 +98,30 @@ test('server keeps profile secrets private, translates a reference only, isolate
   assert.equal(Object.values(checkpoint.entries).filter(r=>r.status==='complete').length,2);
   const retryFrom=seen.length;
   if(ui){
-   const waitReload=async origin=>{for(let i=0;i<100;i++){try{if(await ui.evaluate('performance.timeOrigin!=='+origin))return;}catch{}await sleep(40);}assert.fail('reload did not complete');};
-   const reloadOrigin=await ui.evaluate("setTimeout(()=>location.reload(),0);performance.timeOrigin");
-   await waitReload(reloadOrigin);
-   const wait=async expression=>{for(let i=0;i<220;i++){try{if(await ui.evaluate(expression))return;}catch{}await sleep(40);}throw Error('UI timeout: '+expression);};
-   await wait("!document.querySelector('#workspace').hidden");
-   await ui.evaluate("document.querySelector('#surface-reading').click();true");
-   await wait("!document.querySelector('#material-reference').hidden");
-   await ui.evaluate("document.querySelector('#material-reference').click();true");
-   await wait("Array.from(document.querySelector('#reference-file').options).some(o=>o.value==='"+c.id+"')");
-   await ui.evaluate("(()=>{const file=document.querySelector('#reference-file');file.value='"+c.id+"';file.dispatchEvent(new Event('change'));return true;})()");
-   await wait("document.querySelector('#reference-status').textContent.includes('2/3')&&!document.querySelector('#reference-retry-model').hidden&&!document.querySelector('#process').disabled");
-   await wait("document.querySelectorAll('.reference-page-row').length===3");
-   await ui.evaluate("(()=>{const scroller=document.querySelector('#reference-scroll'),row=document.querySelector('.reference-page-row[data-page=\"1\"]');scroller.scrollTop+=row.getBoundingClientRect().top-scroller.getBoundingClientRect().top+10;return true;})()");
-   await wait("document.querySelector('#reference-page').value==='2'&&!!document.querySelector('.reference-page-row[data-page=\"1\"] canvas')");
-   await ui.evaluate("document.querySelector('.reference-toolbar .reading-ask').click();true");
-   assert.equal(await ui.evaluate("document.querySelector('#ask-page').value"),'2','scrolling updates the question page');
-   assert.equal(await ui.evaluate("document.querySelector('#ask-file').value"),c.id);
-   await ui.evaluate("document.querySelector('#qa-toggle').click();document.querySelector('#reference-page').value='3';document.querySelector('#reference-page').dispatchEvent(new Event('change'));true");
-   await wait("document.querySelector('#reference-page').value==='3'&&!!document.querySelector('.reference-page-row[data-page=\"2\"] canvas')");
-   await ui.evaluate("document.querySelector('#surface-overview').click();document.querySelector('#surface-reading').click();true");
-   await wait("document.querySelector('#reference-page').value==='3'");
-   assert(await ui.evaluate("document.querySelectorAll('#reference-scroll canvas').length<=3"),'only nearby PDF canvases are retained');
+   const course='/w/'+encodeURIComponent(p.id),pageBox="document.querySelector('input[aria-label=页码]')?.value";
+   await reload(ui);
+   await go(ui,'#'+course+'/read/ref/'+encodeURIComponent(c.id)+'/p/1');
+   await waitText(ui,'2/3','main');
+   await waitFor(ui,"document.querySelectorAll('main section[data-page]').length===3&&(c=>c.length===3&&c.every(x=>!!x.style.width))([...document.querySelectorAll('main section[data-page] canvas')])",{timeout:20000,label:'three PDF pages drawn'});
+   // Scrolling moves the page number and the Ask focus with it.
+   await ui.evaluate("(()=>{const s=document.querySelector('main section[data-page=\"2\"]'),scroller=s.closest('.scroller');scroller.scrollTop+=s.getBoundingClientRect().top-scroller.getBoundingClientRect().top+10;return true;})()");
+   await waitFor(ui,pageBox+"==='2'",{label:'page number follows scrolling'});
+   await openAsk(ui);await waitText(ui,'Filtered.pdf · 第 2 页','.ask');
+   // A page chosen by number is kept when leaving the reading page and coming back.
+   await fill(ui,'input[aria-label=页码]','3');
+   await waitFor(ui,pageBox+"==='3'&&[...document.querySelectorAll('main section[data-page=\"3\"] canvas')].some(c=>!!c.style.width)",{timeout:20000,label:'page 3 drawn'});
+   await click(ui,'概览','.topbar nav a');await waitText(ui,'Filtered.pdf','main');
+   await click(ui,'阅读','.topbar nav a');
+   await waitFor(ui,pageBox+"==='3'",{label:'reading position kept'});
    if(process.env.CLASSROOM_MODEL_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_MODEL_EVIDENCE,'Reference-continuous.png'),await ui.screenshot(1500,1000));
-   await ui.evaluate("document.querySelector('#reference-more').open=true;document.querySelector('#reference-retry-model').value='scholar';document.querySelector('#process').click();true");
-   await wait("document.querySelector('#reference-status').textContent.includes('3/3')");
-   assert.equal(await ui.evaluate("document.querySelector('#reference-page').value"),'3','translation refresh preserves the current page');
-   assert(await ui.evaluate("document.querySelector('.progress').hidden"),'reading uses the compact task indicator');
-   if(process.env.CLASSROOM_MODEL_EVIDENCE){
-    await ui.evaluate("document.querySelector('#reference-scroll').scrollTop-=400;true");
-    await sleep(100);
-    await writeFile(path.join(process.env.CLASSROOM_MODEL_EVIDENCE,'Reference-continuous.png'),await ui.screenshot(1500,1000));
-   }
-
-   assert.equal((await api(route)).status,'done');
+   // The filtered paragraph is finished with another model; the assigned model stays.
+   await click(ui,'⋯','main button[aria-haspopup=menu]');await click(ui,'用其他模型补译…');
+   await waitText(ui,'还有 1 段没有译文','dialog[open]');
+   await fill(ui,'补译使用的模型','scholar');
+   await click(ui,'开始补译','dialog[open] button');
+   await waitText(ui,'已翻译','main',{timeout:20000});
+   assert.equal(await ui.evaluate(pageBox),'3','the translation update keeps the current page');
+   await until(async()=> (await api(route)).status==='done');
   }else assert.equal((await processReference('scholar')).status,'done');
   assert.deepEqual(seen.slice(retryFrom).map(r=>[r.model,r.input.english]),[['scholar','FILTER_THIS_BLOCK']]);
   const recovered=await api(readerUrl);

@@ -8,6 +8,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {pathToFileURL} from 'node:url';
 import {testPdf} from '../lib/diagnostics.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
+import {openApp,go,waitFor,waitText,click,text} from './helpers/app.mjs';
 
 test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolated page trials',async t=>{
  try{await browserExecutable();}catch{t.skip('No local browser to render the source page');return;}
@@ -124,26 +125,21 @@ test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolat
  assert.deepEqual((await request(route)).files,upload.files);
  const ui=await launchRenderer(base,{});
  t.after(()=>ui.close());
- await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");
- async function waitFor(expression){
-  for(let i=0;i<200;i++){
-   try{if(await ui.evaluate(expression))return;}catch{}
-   await sleep(30);
-  }
-  assert.fail('Browser did not reach '+expression);
- }
- await waitFor("!document.querySelector('#workspace').hidden");
- await ui.evaluate("document.querySelector('#surface-reading').click();true");
- await waitFor("document.querySelector('#reader-file').selectedOptions[0]?.textContent.includes('Slides.pdf')");
- await ui.evaluate("document.querySelector('#reader-more summary').click();[...document.querySelectorAll('#reader-more button')].find(b=>b.textContent==='试解析本页').click();true");
- await waitFor("document.querySelector('#chatgpt-page-dialog').open&&document.querySelector('#chatgpt-page-result').textContent.includes('测试课件译文')");
- assert.equal(await ui.evaluate("document.querySelector('#chatgpt-page-label').textContent"),'Slides.pdf · 第 1 页');
- await ui.evaluate("document.querySelector('#chatgpt-page-close').click();document.querySelector('#settings-open').click();true");
- await waitFor("document.querySelector('#default-model')?.value==='gpt'");
- assert.equal(await ui.evaluate("[...document.querySelectorAll('.settings-test-actions button')].filter(b=>/^测试/.test(b.textContent)).map(b=>b.textContent).join(',')"),'测试纯文字,测试 JSON,测试图片');
- await ui.evaluate("document.querySelector('[data-settings-section=routes]').click();true");
- const choices=await ui.evaluate("[...document.querySelectorAll('select[data-task]')].map(s=>[...s.options].map(o=>o.value))");
- assert.equal(choices.length,12);
+ await openApp(ui,'/w/'+encodeURIComponent(project.id)+'/read');
+ await waitText(ui,'Slides.pdf','main');
+ await click(ui,'⋯','main button[aria-haspopup=menu]');
+ await click(ui,'试解析第 1 页…');
+ await waitText(ui,'测试课件译文','dialog[open]',{timeout:20000});
+ assert.match(await text(ui,'dialog[open]'),/Slides\.pdf · 第 1 页 · 结果只用于查看/);
+ assert.deepEqual((await request(route)).files,upload.files,'a trial saves nothing');
+ await click(ui,'关闭','dialog[open] button');
+ await go(ui,'#/settings');
+ await waitText(ui,/ChatGPT 订阅[\s\S]*已连接/,'main');
+ assert.equal(await ui.evaluate("(()=>{const card=[...document.querySelectorAll('main section.card')].find(c=>c.querySelector('h2')?.textContent==='ChatGPT 订阅');return [...card.querySelectorAll('button')].map(b=>b.textContent.trim()).filter(t=>/^测试/.test(t)).join(',');})()"),'测试文字,测试 JSON,测试图片');
+ await click(ui,'模型分配','.nav button');
+ await waitFor(ui,"document.querySelector('#default-model')?.value==='gpt'");
+ const choices=await ui.evaluate("[...document.querySelectorAll('select[id^=route-]')].map(s=>[...s.options].map(o=>o.value))");
+ assert(choices.length>=12,'every function can be assigned: '+choices.length);
  for(const options of choices)for(const profileId of ['gpt','api-choice','acp-choice'])assert(options.includes(profileId));
  await wait((await post(route+'/process',{mode:'preparation'})).chatgptJobId);
  assert.match(await (await fetch(base+route+'/output?scope=preparation&name=PPT_Bilingual_Guide.md')).text(),/测试课件译文/);

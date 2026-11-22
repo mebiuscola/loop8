@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
+import {openApp,reload,waitText} from './helpers/app.mjs';
 import {spawn} from 'node:child_process';
 import {mkdtemp,rm,readFile,stat} from 'node:fs/promises';
 import os from 'node:os';
@@ -66,17 +67,13 @@ test('local workflow: parse recovery, immutable originals, complete outputs, QA,
   await t.test('reopening the transcript after reload shows the retried output',async t=>{
    try{await browserExecutable();}catch{return t.skip('Requires Edge / Chrome');}
    const ui=await launchRenderer(base,{});
-   const waitFor=async expression=>{
-    for(let i=0;i<150;i++){try{if(await ui.evaluate(expression))return;}catch{}await sleep(50);}
-    assert.fail('Browser did not reach '+expression);
-   };
    try{
-    await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");
-    await waitFor("document.querySelector('#workspace')?.hidden===false");
-    await ui.evaluate("window.beforeReload=true;setTimeout(()=>location.reload(),0);true");
-    await waitFor("!window.beforeReload&&document.querySelector('#workspace')?.hidden===false");
-    await ui.evaluate("document.querySelector('#surface-transcripts').click();true");
-    await waitFor("document.body.innerText.includes('Let us discuss opacity.')&&document.querySelector('#process').textContent.includes('更新')");
+    await openApp(ui,'/w/'+encodeURIComponent(id)+'/class/'+encodeURIComponent(sessionId));
+    await waitText(ui,'Let us discuss opacity.','main');
+    await reload(ui);
+    await waitText(ui,'Let us discuss opacity.','main');
+    assert(await ui.evaluate("!![...document.querySelectorAll('main button')].find(b=>b.textContent.trim()==='⋯')"),'other actions stay in the menu');
+    assert.equal(await ui.evaluate("[...document.querySelectorAll('main .btn-primary')].filter(b=>/讲稿/.test(b.textContent)).length"),0,'a finished class script offers no primary generate button');
    }finally{await ui.close();}
   });
   assert((await stat(path.join(temp,'classes',id,'Output','Weekly_Deep_Dive.md'))).size>0);

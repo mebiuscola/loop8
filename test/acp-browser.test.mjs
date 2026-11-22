@@ -8,6 +8,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {testPdf} from '../lib/diagnostics.mjs';
+import {openApp,go,waitFor,waitText,click,fill} from './helpers/app.mjs';
 async function until(fn){for(let i=0;i<200;i++){const value=await fn();if(value)return value;await sleep(40);}throw Error('Timed out waiting for browser state');}
 test('ACP settings, diagnostics, Ask permissions, navigation, cancellation and API compatibility work through real browser',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-acp-ui-')),exe=path.join(dir,'agy_acp_server.exe'),hook=path.join(dir,'hook.mjs'),fixture=fileURLToPath(new URL('./fixtures/mock-acp.mjs',import.meta.url)).replaceAll('\\','/');await writeFile(exe,'test fixture placeholder');await writeFile(path.join(dir,'localharness_external.exe'),'matching test helper');
@@ -46,20 +47,32 @@ test('ACP settings, diagnostics, Ask permissions, navigation, cancellation and A
   await call('/api/settings',{modelRoutes:{qa:profile.id,deepDive:profile.id}});const gate=await fetch(base+route+'/process',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode:'analysis'})});assert.equal(gate.status,400);assert.match((await gate.json()).error,/讲稿/);await call('/api/settings',{modelRoutes:{qa:profile.id}});
   let browser=true;try{await browserExecutable();}catch{browser=false;t.diagnostic('Browser unavailable; ACP HTTP diagnostics verified.');}
   if(browser){
-   ui=await launchRenderer(base,{});await ui.evaluate(`localStorage.setItem('classroom-project',${JSON.stringify(p.id)});setTimeout(()=>location.href='/legacy/',0);true`);await until(()=>ui.evaluate("document.querySelector('#title')?.textContent==='ACP course'"));
-   await ui.evaluate("document.querySelector('#settings-open').click();true");await until(()=>ui.evaluate("document.querySelector('[data-model-id=acp-test]')"));await ui.evaluate("document.querySelector('[data-model-id=acp-test]').click();true");
-   assert.equal(await ui.evaluate("!!document.querySelector('[data-profile=acp-test] [data-field=acpExecutable]')"),true);
-   await ui.evaluate("document.querySelector('[data-settings-section=routes]').click();true");assert.equal(await ui.evaluate("document.querySelector('[data-task=deepDive] option[value=acp-test]').disabled"),false);await ui.evaluate("document.querySelector('[data-settings-section=models]').click();true");
-   await ui.evaluate("[...document.querySelectorAll('[data-profile=acp-test] button')].find(b=>b.textContent==='读取模型列表').click();true");await until(()=>ui.evaluate("document.querySelector('[data-profile=acp-test] .profile-test-status')?.textContent.includes('已完成')"));
-   assert.equal(await ui.evaluate("document.querySelector('[data-profile=acp-test] [data-field=model]').value"),'mock-gemini');
-   assert.equal(await ui.evaluate("[...document.querySelectorAll('[data-profile=acp-test] input')].some(e=>e.type==='password')"),false);
-   if(process.env.CLASSROOM_ACP_EVIDENCE){await ui.evaluate("document.querySelector('[data-profile=acp-test]').scrollIntoView({block:'start'});true");await mkdir(process.env.CLASSROOM_ACP_EVIDENCE,{recursive:true});await writeFile(path.join(process.env.CLASSROOM_ACP_EVIDENCE,'ACP-settings.png'),await ui.screenshot(1500,1000));}
-   await ui.evaluate("document.querySelector('#settings-close').click();document.querySelector('#qa-launch').click();document.querySelector('#question').value='need-permission';document.querySelector('#ask-form').requestSubmit();true");
+   ui=await launchRenderer(base,{});await openApp(ui,'/settings');
+   // Opening settings quietly confirms the sign-in by reading the model list.
+   await waitText(ui,/已登录 · 可用模型 [1-9]\d* 个/,'main',{timeout:20000});
+   assert(await ui.evaluate("(()=>{const card=[...document.querySelectorAll('main section.card')].find(c=>c.querySelector('h2')?.textContent==='Antigravity 账号');return !!card&&!card.querySelector('input[type=password]')&&card.innerText.includes('已在使用的模型');})()"),'the Antigravity card asks for no key and lists the model in use');
+   await click(ui,'刷新可用模型');
+   await waitText(ui,/已登录，读取到 \d+ 个可用模型/,'main',{timeout:20000});
+   await click(ui,'模型分配','.nav button');
+   await waitFor(ui,"[...(document.querySelector('#route-deepDive')?.options||[])].some(o=>o.value==='acp-test'&&!o.disabled)",{label:'Antigravity model offered for Deep Dive'});
+   if(process.env.CLASSROOM_ACP_EVIDENCE){await mkdir(process.env.CLASSROOM_ACP_EVIDENCE,{recursive:true});await click(ui,'服务与账号','.nav button');await writeFile(path.join(process.env.CLASSROOM_ACP_EVIDENCE,'ACP-settings.png'),await ui.screenshot(1500,1000));await ui.screenshot(1440,960);}
+   // Ask: a one-action permission is approved for that action only, and the answer is saved.
+   await go(ui,'#/w/'+encodeURIComponent(p.id)+'/overview');
+   await waitText(ui,'ACP course','.topbar .title');
+   await click(ui,'提问','.topbar button');
+   await fill(ui,'问题','need-permission');await click(ui,'提问','.ask button[type=submit]');
    await until(async()=> (await call(route)).chat.length===2);
-   await until(()=>ui.evaluate("!document.querySelector('#ask').disabled"));await ui.evaluate("document.querySelector('#question').value='slow-request';document.querySelector('#ask-form').requestSubmit();true");await until(()=>ui.evaluate("!!document.querySelector('#chat .acp-progress button')"));
-   await ui.evaluate("[...document.querySelectorAll('#projects .project')].find(e=>e.textContent.includes('Other course')).click();true");await until(()=>ui.evaluate("document.querySelector('#title').textContent==='Other course'"));
-   await ui.evaluate("[...document.querySelectorAll('#projects .project')].find(e=>e.textContent.includes('ACP course')).click();true");await until(()=>ui.evaluate("!!document.querySelector('#chat .acp-progress button')"));
-   await ui.evaluate("document.querySelector('#chat .acp-progress button').click();true");await until(()=>ui.evaluate("document.querySelector('#chat').textContent.includes('停止')"));assert.equal((await call(route)).chat.length,2,'cancelled answer is not saved');
+   await waitFor(ui,"!document.querySelector('.ask button[type=submit]').textContent.includes('正在回答')");
+   // A slow answer can be stopped, also after visiting another course; a stopped answer is not saved.
+   const stop="[...document.querySelectorAll('.ask button')].some(b=>b.textContent.trim()==='停止')";
+   await fill(ui,'问题','slow-request');await click(ui,'提问','.ask button[type=submit]');
+   await waitFor(ui,stop,{label:'stop button'});
+   await click(ui,/Other course$/,'nav.sidebar a');await waitText(ui,'Other course','.topbar .title');
+   assert.equal(await ui.evaluate(stop),false,'another course shows no pending answer');
+   await click(ui,/ACP course$/,'nav.sidebar a');await waitFor(ui,stop,{label:'stop button after returning'});
+   await click(ui,'停止','.ask button');
+   await waitText(ui,'已停止','.ask');
+   assert.equal((await call(route)).chat.length,2,'cancelled answer is not saved');
   }
  }finally{await ui?.close();child.kill();await new Promise(r=>child.exitCode!==null?r():child.once('exit',r));await rm(dir,{recursive:true,force:true,maxRetries:4,retryDelay:80});}
 });

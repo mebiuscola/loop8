@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {launchRenderer} from '../lib/browser-render.mjs';
+import {openApp,waitFor,waitText,click} from './helpers/app.mjs';
 import {deleteMaterial,materialDeleteJournal} from '../lib/material-delete.mjs';
 import {contentHash} from '../lib/materials.mjs';
 
@@ -45,7 +46,7 @@ test('material deletion resumes after a locked file and preserves shared origina
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 
-test('desktop sidebar scrolls independently and the material menu confirms deletion through the real UI',async()=>{
+test('course list scrolls independently and the overview material menu deletes only after confirmation',async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-material-ui-'));
  const server=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:dir,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});
  let log='',browser;
@@ -62,31 +63,26 @@ test('desktop sidebar scrolls independently and the material menu confirms delet
   const uploaded=await api(route+'/upload',{method:'POST',headers:{'x-file-role':'bb','x-file-name':'BB%20example.md'},body:'Test material'});
   const file=uploaded.files.at(-1);
   browser=await launchRenderer(base,{});
-  await browser.evaluate("setTimeout(()=>location.href='/legacy/',0);true");
-  await until(()=>browser.evaluate("!!document.querySelector('#files .item-trigger')"));
-  await browser.evaluate("if(document.body.classList.contains('sidebar-collapsed'))document.querySelector('#sidebar-toggle').click();true");
-  await browser.screenshot(1280,720);
+  await openApp(browser,'/w/'+encodeURIComponent(project.id)+'/overview',{width:1280,height:720});
+  await waitText(browser,file.name,'main');
   const layout=await browser.evaluate(`(()=>{
-   const list=document.querySelector('#projects'),footer=document.querySelector('aside footer');
+   const list=document.querySelector('nav.sidebar ul.courses'),foot=document.querySelector('nav.sidebar .foot');
    list.scrollTop=list.scrollHeight;
-   return {scroll:list.scrollTop,rows:list.children.length,scrollHeight:list.scrollHeight,clientHeight:list.clientHeight,overflow:getComputedStyle(list).overflowY,body:document.body.className,footer:footer.getBoundingClientRect().bottom,list:list.getBoundingClientRect().bottom,width:innerWidth,height:innerHeight,duplicate:!!document.querySelector('#week-menu')};
+   return {scroll:list.scrollTop,rows:list.children.length,overflow:getComputedStyle(list).overflowY,list:list.getBoundingClientRect().bottom,foot:foot.getBoundingClientRect().top,footBottom:foot.getBoundingClientRect().bottom,height:innerHeight,page:document.documentElement.scrollHeight};
   })()`);
-  assert(layout.scroll>0,JSON.stringify(layout));assert(layout.list<=layout.footer&&layout.footer<=layout.height,JSON.stringify(layout));assert.equal(layout.duplicate,false);
-  await sleep(100);
-  assert(await browser.evaluate(`(()=>{
-   const row=document.querySelector('#projects .project-row:last-child');
-   row.querySelector('.item-trigger').click();
-   const menu=row.querySelector('.item-popover'),bounds=menu.getBoundingClientRect();
-   const visible=menu.matches(':popover-open')&&bounds.top>=0&&bounds.bottom<=innerHeight;
-   menu.hidePopover();return visible;
-  })()`));
-  await browser.evaluate("document.querySelector('#files .item-trigger').click();document.querySelector('#files .item-popover .danger-text').click();true");
-  await until(()=>browser.evaluate("document.querySelector('#delete-material-dialog').open"));
-  assert.equal(await browser.evaluate("document.querySelector('#delete-material-name').textContent"),file.name);
+  assert.equal(layout.rows,17,JSON.stringify(layout));
+  assert(layout.scroll>0,'the course list scrolls by itself: '+JSON.stringify(layout));
+  assert(layout.list<=layout.foot+1&&layout.footBottom<=layout.height,'settings stay below the list and inside the window: '+JSON.stringify(layout));
+  assert(layout.page<=layout.height,'the page itself does not scroll: '+JSON.stringify(layout));
+  await click(browser,'⋯','button[aria-label="更多 · '+file.name+'"]');
+  assert(await browser.evaluate("(()=>{const m=document.querySelector('[role=menu]').getBoundingClientRect();return m.top>=0&&m.bottom<=innerHeight;})()"),'the material menu fits in the window');
+  await click(browser,'删除材料…');
+  await waitFor(browser,`document.querySelector('dialog[open]')?.innerText.includes(${JSON.stringify(file.name)})`,{label:'delete dialog names the material'});
   if(process.env.CLASSROOM_MATERIAL_EVIDENCE)await writeFile(process.env.CLASSROOM_MATERIAL_EVIDENCE,await browser.screenshot(1280,720));
-  await browser.evaluate("document.querySelector('#delete-material-confirm').click();true");
+  assert.equal((await api(route)).files.length,1,'opening the dialog deletes nothing');
+  await click(browser,'永久删除材料');
   await until(async()=>!(await api(route)).files.length);
-  await until(()=>browser.evaluate("!document.querySelector('#files [data-file-id]')"));
+  await waitFor(browser,`!document.querySelector('main').innerText.includes(${JSON.stringify(file.name)})`,{label:'row removed'});
   await assert.rejects(readFile(path.join(dir,'classes',project.id,'Source',file.stored)),{code:'ENOENT'});
  }finally{
   await browser?.close();

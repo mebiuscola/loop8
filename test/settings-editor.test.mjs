@@ -7,6 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
+import {openApp,waitFor,waitText,click,fill,has,text} from './helpers/app.mjs';
 async function until(fn){for(let i=0;i<220;i++){const value=await fn();if(value)return value;await sleep(30);}throw Error('Settings UI timed out');}
 test('section saves are independent, default includes ACP, model tests preserve private keys, editing never sends a request',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-settings-')),requests=[];const mock=http.createServer(async(req,res)=>{let raw='';for await(const b of req)raw+=b;const body=JSON.parse(raw);requests.push({authorization:req.headers.authorization,body});res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify({status:'ok',books:7,notes:4})}}]}));});await new Promise(r=>mock.listen(0,'127.0.0.1',r));
@@ -25,24 +26,35 @@ test('section saves are independent, default includes ACP, model tests preserve 
   await api('/api/settings/editor',{section:'model',profile:cli,acpPaths:{cli:cliPath,standalone:acp.acpExecutable}});
   state=await api('/api/settings/editor');assert.deepEqual(state.acpPaths,{cli:cliPath,standalone:acp.acpExecutable});
   let browser=true;try{await browserExecutable();}catch{browser=false;t.diagnostic('Browser unavailable; settings HTTP checks completed.');}
-  if(browser){ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");await until(()=>ui.evaluate("!!document.querySelector('.settings-menu')"));await ui.evaluate("document.querySelector('#settings-open').click();true");await until(()=>ui.evaluate("document.querySelector('#settings').open"));
-   assert.equal(await ui.evaluate("document.querySelector('#default-model').value"),acp.id);assert.equal(await ui.evaluate("document.querySelector('#default-model option[value=another-acp]').disabled"),false);
-   const switchEntry=entry=>ui.evaluate(`(()=>{const input=document.querySelector('[data-field=acpEntry]');input.value='${entry}';input.dispatchEvent(new Event('input'));input.dispatchEvent(new Event('change'));return document.querySelector('[data-field=acpExecutable]').value;})()`);
-   assert.equal(await switchEntry('cli'),cliPath);
-   assert.equal(await switchEntry('standalone'),acp.acpExecutable);
-   assert.equal(await ui.evaluate("document.querySelector('[data-field=model]').value"),acp.model);
-   await ui.evaluate("document.querySelector('.settings-footer button').click();true");
-   await until(()=>ui.evaluate("document.querySelector('#settings-status').textContent==='已保存'"));
-   await ui.evaluate("document.querySelector('[data-settings-section=routes]').click();true");assert.equal(await ui.evaluate("document.querySelector('[data-task=qa]').value"),id);assert.equal(await ui.evaluate("document.querySelector('[data-task=deepDive] option[value=another-acp]').disabled"),false);
-   if(process.env.CLASSROOM_SETTINGS_EVIDENCE){await mkdir(process.env.CLASSROOM_SETTINGS_EVIDENCE,{recursive:true});await writeFile(path.join(process.env.CLASSROOM_SETTINGS_EVIDENCE,'Function-models.png'),await ui.screenshot(1500,1000));}
-   await ui.evaluate(`document.querySelector('[data-settings-section=models]').click();document.querySelector('[data-model-id="${id}"]').click();true`);
-   assert.equal(await ui.evaluate("document.querySelector('[data-field=apiKey]').value"),'');
-   await ui.evaluate("document.querySelector('[data-field=name]').value='';document.querySelector('[data-field=name]').dispatchEvent(new Event('input'));document.querySelector('[data-settings-section=mineru]').click();document.querySelector('[name=uploadConcurrency]').value='3';document.querySelector('[name=uploadConcurrency]').dispatchEvent(new Event('input'));document.querySelector('.settings-footer button').click();true");
-   await until(async()=> (await api('/api/settings')).uploadConcurrency===3);assert.equal((await api('/api/settings/editor')).modelProfiles.find(p=>p.id===id).name,'My API','invalid model draft did not contaminate MinerU save');assert.equal(requests.length,2,'editing, selecting and saving never request model inference');
-   await ui.evaluate("document.querySelector('[data-settings-section=models]').click();document.querySelector('[data-field=name]').value='My API';document.querySelector('[data-field=name]').dispatchEvent(new Event('input'));document.querySelector('[data-field=model]').value='another-custom-model';document.querySelector('[data-field=model]').dispatchEvent(new Event('input'));document.querySelector('.settings-footer button').click();true");
+  if(browser){
+   ui=await launchRenderer(base,{});await openApp(ui,'/settings');
+   await waitText(ui,'API 连接');
+   assert(!(await ui.evaluate('document.documentElement.outerHTML')).includes('preserved-secret'),'saved keys never reach the page');
+   {const shown=await text(ui,'main');assert.match(shown,/程序：手动指定/,shown.slice(0,600));}
+   await click(ui,/^My API/,'button.summary');
+   assert.equal(await ui.evaluate("[...document.querySelectorAll('input[type=password]')].find(e=>e.placeholder.startsWith('已保存'))?.value"),'','a saved key shows as kept, never as its value');
+   await click(ui,'模型分配','.nav button');
+   await waitFor(ui,"document.querySelector('#default-model')?.value==='another-acp'");
+   assert.equal(await ui.evaluate("document.querySelector('#route-qa').value"),id);
+   assert(await ui.evaluate("[...document.querySelector('#route-deepDive').options].some(o=>o.value==='another-acp'&&!o.disabled)"),'Antigravity models can be assigned to Deep Dive');
+   if(process.env.CLASSROOM_SETTINGS_EVIDENCE){await mkdir(process.env.CLASSROOM_SETTINGS_EVIDENCE,{recursive:true});await writeFile(path.join(process.env.CLASSROOM_SETTINGS_EVIDENCE,'Function-models.png'),await ui.screenshot(1500,1000));await ui.screenshot(1440,960);}
+   // An unsaved assignment stays a draft while another page is saved.
+   await fill(ui,'#route-qa','another-acp');
+   await click(ui,'高级','.nav button');
+   await fill(ui,'材料解析并发数','3');
+   await click(ui,'保存','.savebar button');
+   await until(async()=> (await api('/api/settings')).parseConcurrency===3);
+   assert.equal((await api('/api/settings/editor')).modelRoutes.qa,id,'the assignment draft was not saved with the advanced page');
+   assert(await has(ui,'.nav button',/^模型分配●/),'the other page still shows its unsaved change');
+   // Editing a connection keeps its saved key.
+   await click(ui,'服务与账号','.nav button');
+   await click(ui,/^My API/,'button.summary');
+   await fill(ui,'模型名称','another-custom-model');
+   await click(ui,'保存','.savebar button');
    await until(async()=> (await api('/api/settings/editor')).modelProfiles.find(p=>p.id===id).model==='another-custom-model');
+   assert((await api('/api/settings/editor')).modelProfiles.find(p=>p.id===id).hasApiKey);
    if(process.env.CLASSROOM_SETTINGS_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_SETTINGS_EVIDENCE,'AI-models.png'),await ui.screenshot(1500,1000));
-   await ui.evaluate("document.querySelector('#settings-close').click();true");assert.equal(await ui.evaluate("document.querySelector('#settings').open"),false);
+   assert.equal(requests.length,2,'editing, selecting and saving never request model inference');
   }
  }finally{await ui?.close();child.kill();await new Promise(r=>child.exitCode!==null?r():child.once('exit',r));mock.closeAllConnections();await new Promise(r=>mock.close(r));await rm(dir,{recursive:true,force:true,maxRetries:4,retryDelay:50});}
 });

@@ -8,6 +8,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {testPdf} from '../lib/diagnostics.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
+import {openApp,go,waitFor,waitText,click} from './helpers/app.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 test('real isolated browser renders PPTX and PDF, sends page images, imports valid JSON, keeps originals and hides parsing credentials',async t=>{
  try{await browserExecutable();}catch{return t.skip('Requires locally installed Edge / Chrome');}
@@ -47,28 +48,33 @@ test('real isolated browser renders PPTX and PDF, sends page images, imports val
   const before=calls;await api(url+'/ai-parse',{sourceId:partial.id});await waitFile(partial.id);assert.equal(calls,before,'continue does not reset exhausted submissions');
   const ui=await launchRenderer(base,{});
   try{
-   await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");
-   let ready=false;for(let i=0;i<100;i++){try{if(await ui.evaluate("document.querySelectorAll('.parse-action').length===4")){ready=true;break;}}catch{}await sleep(50);}assert(ready,'real UI renders parsing actions');
-   assert.match(await ui.evaluate("document.querySelector('.parse-progress').innerText"),/AI 完成 6\/6/);
+   const course='/w/'+encodeURIComponent(p.id);
+   await openApp(ui,course+'/overview',{width:1540,height:1100});
+   for(const name of ['test.pptx','scan.pdf','needs-backup.pdf','partial.pdf'])await waitText(ui,name,'main');
    const imagePath=path.join(temp,'classes',p.id,'.Cache','Pages',p.files[0].id,'page-1.png'),imageBefore=await readFile(imagePath),seedPath=imagePath.replace('.png','.json'),seedBefore=await readFile(seedPath,'utf8');
    const beforeOpen=calls;
-   await ui.evaluate("document.querySelector('#surface-reading').click();true");
-   for(let i=0;i<160;i++){if(await ui.evaluate("document.querySelectorAll('#reader-grid .cached-slide').length>0"))break;await sleep(50);}
-   assert(await ui.evaluate("document.querySelectorAll('#reader-grid .cached-slide').length>0"),'reader shows cached page images');
-   assert.equal(await ui.evaluate("document.querySelectorAll('#reader-grid iframe').length"),0,'default reader never starts per-slide render iframes');
-   assert.match(await ui.evaluate("document.querySelector('.page-translation').textContent"),/完整正文翻译/);
-   await ui.evaluate("document.querySelector('#surface-overview').click();document.querySelector('#surface-reading').click();true");await sleep(400);
+   await go(ui,'#'+course+'/read/'+encodeURIComponent(p.files[0].id));
+   await waitFor(ui,"[...document.querySelectorAll('main img')].some(i=>i.complete&&i.naturalWidth>0)",{timeout:20000,label:'cached page image'});
+   assert.equal(await ui.evaluate("document.querySelectorAll('main iframe').length"),0,'the default reader never starts per-slide render frames');
+   await waitText(ui,'完整正文翻译','main');
+   await go(ui,'#'+course+'/overview');await waitText(ui,'partial.pdf','main');
+   await go(ui,'#'+course+'/read/'+encodeURIComponent(p.files[0].id));await waitText(ui,'完整正文翻译','main');await sleep(400);
    assert.deepEqual(await readFile(imagePath),imageBefore);assert.equal(await readFile(seedPath,'utf8'),seedBefore);assert.equal(calls,beforeOpen,'reading never invokes a model');
-   if(process.env.CLASSROOM_UI_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_UI_EVIDENCE,'PPT-cache-v2.7.png'),await ui.screenshot(1540,1100));
-   await ui.evaluate("document.querySelector('#surface-overview').click();true");
-
-   if(process.env.CLASSROOM_UI_EVIDENCE){await mkdir(process.env.CLASSROOM_UI_EVIDENCE,{recursive:true});await writeFile(path.join(process.env.CLASSROOM_UI_EVIDENCE,'AI-materials-v2.6.png'),await ui.screenshot(1540,1100));}
-   await ui.evaluate("document.querySelector('#settings-open').click();true");for(let i=0;i<100;i++){if(await ui.evaluate("document.querySelector('#settings').open"))break;await sleep(20);}
-   await ui.evaluate("document.querySelector('[data-settings-section=advanced]').click();true");assert.equal(await ui.evaluate("document.querySelector('[name=parseConcurrency]').value"),'2');
-   await ui.evaluate("document.querySelector('[data-settings-section=models]').click();[...document.querySelectorAll('[data-model-id]')].find(b=>b.textContent.includes('\u5907\u7528')).click();true");assert.equal(await ui.evaluate("document.querySelector('[data-field=model]').value"),'mock-fallback');assert.equal(await ui.evaluate("document.querySelector('[data-field=apiKey]').value"),'');
-   await ui.evaluate("document.querySelector('#settings-close').click();[...document.querySelectorAll('.file')].find(f=>f.textContent.includes('partial.pdf')).querySelectorAll('button').forEach(b=>{if(b.textContent==='查看逐页结果')b.click();});true");for(let i=0;i<100;i++){if(await ui.evaluate("document.querySelector('#ai-results-dialog').open"))break;await sleep(20);}
-   assert.match(await ui.evaluate("document.querySelector('#ai-results-summary').textContent"),/1\/2/);assert.equal(await ui.evaluate("document.querySelector('#ai-results-accept').hidden"),false);assert.equal(await ui.evaluate("document.querySelector('#ai-results-accept').disabled"),false);await ui.evaluate("document.querySelector('#ai-results-pages details').open=true;true");
-   if(process.env.CLASSROOM_UI_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_UI_EVIDENCE,'AI-partial-v2.6.png'),await ui.screenshot(1540,1000));
+   if(process.env.CLASSROOM_UI_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_UI_EVIDENCE,'PPT-cache.png'),await ui.screenshot(1540,1100));
+   await go(ui,'#/settings');
+   await click(ui,'高级','.nav button');
+   assert.equal(await waitFor(ui,"[...document.querySelectorAll('main label')].find(l=>l.textContent.trim().startsWith('材料解析并发数'))?.querySelector('input')?.value"),'2');
+   await click(ui,'服务与账号','.nav button');
+   await click(ui,/备用/,'button.summary');
+   assert.equal(await waitFor(ui,"[...document.querySelectorAll('main label')].find(l=>l.textContent.trim().startsWith('模型名称'))?.querySelector('input')?.value"),'mock-fallback');
+   assert(!(await ui.evaluate('document.documentElement.outerHTML')).includes('fallback-secret'),'saved keys never reach the page');
+   assert.equal(await ui.evaluate("[...document.querySelectorAll('main input[type=password]')].every(e=>e.value==='')"),true);
+   await go(ui,'#'+course+'/overview');
+   await click(ui,'⋯','button[aria-label="更多 · partial.pdf"]');
+   await click(ui,'查看逐页结果');
+   await waitText(ui,'已完成 1/2 页','dialog[open]');
+   assert(await ui.evaluate("[...document.querySelectorAll('dialog[open] button')].some(b=>b.textContent.trim()==='采用部分结果'&&!b.disabled)"),'partial results can be accepted');
+   if(process.env.CLASSROOM_UI_EVIDENCE)await writeFile(path.join(process.env.CLASSROOM_UI_EVIDENCE,'AI-partial.png'),await ui.screenshot(1540,1000));
   }finally{await ui.close();}
   await api(url+'/ai-partial-import',{sourceId:partial.id,confirm:true});const accepted=await api(url+'/analysis?source='+partial.id);assert.deepEqual(accepted.coverage.missing,[2]);assert.equal(accepted.pages[1].status,'unreadable');
   const beforeRetry=calls;await api(url+'/ai-parse',{sourceId:partial.id,retryFailed:true});await waitFile(partial.id);assert.equal(calls-beforeRetry,3);assert.equal(requests.filter(r=>r.source==='partial.pdf'&&r.page===1).length,1);
