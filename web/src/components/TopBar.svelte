@@ -2,7 +2,7 @@
  import Icon from './Icon.svelte';
  import TaskPanel from './TaskPanel.svelte';
  import {store} from '../lib/store.svelte';
- import {router,workspaces,courseHref} from '../lib/router.svelte';
+ import {router,workspaces} from '../lib/router.svelte';
 
  let {askOpen=$bindable(false),askAvailable=false}:{askOpen?:boolean;askAvailable?:boolean}=$props();
  let tasksOpen=$state(false);
@@ -25,7 +25,7 @@
  {#if route.page==='course'}
   <nav class="tabs" aria-label="工作区">
    {#each workspaces as w (w.id)}
-    <a href={courseHref(route.courseId,w.id)} class:active={route.workspace===w.id} aria-current={route.workspace===w.id?'page':undefined}>{w.label}</a>
+    <a href={router.placeHref(route.courseId,w.id)} class:active={route.workspace===w.id} aria-current={route.workspace===w.id?'page':undefined}>{w.label}</a>
    {/each}
   </nav>
  {/if}
@@ -41,7 +41,7 @@
    {#if tasksOpen}<TaskPanel onclose={()=>tasksOpen=false}/>{/if}
   </div>
   {#if askAvailable}
-   <button class="btn" class:btn-primary={askOpen} onclick={()=>askOpen=!askOpen} aria-pressed={askOpen}><Icon name="ask" size={16}/>提问</button>
+   <button class="btn" class:btn-primary={askOpen} onclick={()=>askOpen=!askOpen} aria-pressed={askOpen} title="提问"><Icon name="ask" size={16}/><span class="ask-label">提问</span></button>
   {/if}
  </div>
 </header>
@@ -61,4 +61,12 @@
  .tasks{position:relative;}
  .busy{color:var(--status-running-fg);}
  .warn{color:var(--status-stopped-fg);}
+ /* Phone width: the course name is in the course list; tabs and buttons tighten to fit. */
+ @media (max-width:600px){
+  .topbar{gap:var(--space-2);padding:0 var(--space-2);}
+  .title{display:none;}
+  .tabs{gap:0;}
+  .tabs a{padding:0 var(--space-2);}
+  .ask-label{display:none;}
+ }
 </style>

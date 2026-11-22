@@ -4,7 +4,7 @@ import {taskStatus,type StatusKind} from './status';
 
 export interface ClassStatus{kind:StatusKind;text:string;}
 
-/** Same freshness rule as public/workflow.js scriptState. */
+/** Same freshness rule as lib/workflow.mjs scriptState. */
 export function scriptStale(project:Project,s:Session){
  return !!s.generation&&(s.materialRevision!==project.materialRevision||s.outputRevision!==s.revision);
 }
@@ -15,6 +15,8 @@ export function scriptStatus(project:Project,s:Session):ClassStatus{
  if(!s.srtId)return {kind:'idle',text:'等待字幕'};
  if(s.generation){
   if(scriptStale(project,s))return {kind:'stale',text:s.outputRevision!==s.revision?'字幕已更换 · 建议更新讲稿':'课件已变更 · 建议更新讲稿'};
+  // The last run failed or stopped, e.g. a regeneration: say so; the earlier script stays readable.
+  if(task&&['error','partial'].includes(task.status)){const k=taskStatus(task);return {kind:k,text:(k==='stopped'?'上次生成已停止':'上次生成失败'+(/content_filter/.test(task.error||'')?' · 模型过滤':''))+' · 仍显示之前的讲稿'};}
   return {kind:'done',text:'讲稿已就绪'};
  }
  if(task&&['error','partial'].includes(task.status)){const k=taskStatus(task);return {kind:k,text:k==='stopped'?'已停止 · 可继续':'失败'+(/content_filter/.test(task.error||'')?' · 模型过滤':'')};}

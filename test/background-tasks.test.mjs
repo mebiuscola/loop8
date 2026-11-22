@@ -9,6 +9,7 @@ import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {testPdf} from '../lib/diagnostics.mjs';
+import {openApp,waitFor,waitText,click,fill} from './helpers/app.mjs';
 
 async function until(check){
  for(let i=0;i<220;i++){const result=await check();if(result)return result;await sleep(35);}
@@ -65,15 +66,22 @@ test('MinerU and Ask overlap, keep independent state and preserve navigation and
   let pending;
   if(browser){
    ui=await launchRenderer(base,{});
-   await ui.evaluate(`localStorage.setItem('classroom-project',${JSON.stringify(first.id)});setTimeout(()=>location.href='/',0);true`);
-   await until(()=>ui.evaluate("document.querySelector('#title')?.textContent==='Background A'"));
-   await ui.evaluate("document.querySelector('#qa-launch').click();document.querySelector('#question').value='My original question';document.querySelector('#ask-form').requestSubmit();true");
+   await openApp(ui,'/w/'+encodeURIComponent(first.id)+'/overview');
+   await waitText(ui,'Background A','.topbar .title');
+   await click(ui,'提问','.topbar button');
+   await fill(ui,'问题','My original question');
+   await click(ui,'提问','.ask button[type=submit]');
   }else pending=api(route+'/ask',{question:'My original question'});
   await until(()=>questions[0]);
   assert.equal((await request(route+'/ask',{question:'Duplicate'})).status,400);
   if(ui){
-   await ui.evaluate("document.querySelector('#question').value='Next question draft';[...document.querySelectorAll('#projects .project')].find(x=>x.textContent.includes('Background B')).click();true");
-   await until(()=>ui.evaluate("document.querySelector('#title').textContent==='Background B'"));
+   // The box is free while the answer is pending; the draft stays with its course.
+   await fill(ui,'问题','Next question draft');
+   await click(ui,/Background B$/,'nav.sidebar a');
+   await waitText(ui,'Background B','.topbar .title');
+   await waitFor(ui,"!!document.querySelector('.ask textarea')",{label:'Ask panel for course B'});
+   assert.equal(await ui.evaluate("document.querySelector('.ask textarea').value"),'','another course has its own empty draft');
+   assert.doesNotMatch(await ui.evaluate("document.querySelector('.ask .progress').textContent"),/回答/,'the pending answer is not shown in another course');
   }
   uploads.get('A.pdf').end('ok');
   await until(async()=> (await api(route)).files.find(file=>file.id===a.id).parseStatus==='ready');
@@ -85,9 +93,9 @@ test('MinerU and Ask overlap, keep independent state and preserve navigation and
   assert.equal(done.files.filter(file=>file.parseStatus==='ready').length,3);
   assert(done.files.find(file=>file.name==='extra.txt'));
   if(ui){
-   await ui.evaluate("[...document.querySelectorAll('#projects .project')].find(x=>x.textContent.includes('Background A')).click();true");
-   await until(()=>ui.evaluate("document.querySelector('#chat').textContent.includes('The saved answer.')"));
-   assert.equal(await ui.evaluate("document.querySelector('#question').value"),'Next question draft');
+   await click(ui,/Background A$/,'nav.sidebar a');
+   await waitText(ui,'The saved answer.','.ask');
+   assert.equal(await ui.evaluate("document.querySelector('.ask textarea').value"),'Next question draft');
   }
  }finally{
   await ui?.close();child.kill();mock.closeAllConnections();await new Promise(resolve=>mock.close(resolve));

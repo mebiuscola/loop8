@@ -4,6 +4,7 @@
  import {untrack} from 'svelte';
  import Icon from '../Icon.svelte';
  import StatusBadge from '../StatusBadge.svelte';
+ import ErrorNote from '../ErrorNote.svelte';
  import RichText from '../RichText.svelte';
  import {api,ApiError,type Project,type Session} from '../../lib/api';
  import {router,courseHref} from '../../lib/router.svelte';
@@ -151,7 +152,7 @@
 
   {#if actionError||citationIssues||session&&result.available&&scriptStale(project,session)}
    <div class="notes">
-    {#if actionError}<span class="error" role="alert">{actionError}</span>{/if}
+    {#if actionError}<ErrorNote text={actionError}/>{/if}
     {#if session&&result.available&&scriptStale(project,session)}<span class="note">这节课的讲稿需要先更新，之后才能更新本节 Deep Dive。<a href={courseHref(project.id,'class',encodeURIComponent(session.id))}>去课堂更新讲稿</a></span>{/if}
     {#if citationIssues&&result.available}<span class="note">有 {citationIssues} 处引用未能在提供的原文中核对，文中标为"来源待核对"。</span>{/if}
    </div>

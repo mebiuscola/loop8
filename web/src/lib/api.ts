@@ -43,7 +43,10 @@ export interface Settings{acpBundled:string;modelProfiles:ModelProfile[];modelRo
  contextConcurrency:number;parseConcurrency:number;compactPptImages:boolean;chunkChars:number;structuredOutput:boolean;contextChars:number;maxOutputTokens:number;outputTokenField:string;visionEnabled:boolean;}
 export type SettingsSave={section:'model';profile:ModelProfile;acpPaths?:Record<string,string>}|{section:'delete-model';profileId:string}|{section:'models';defaultProfileId:string}
  |{section:'routes';modelRoutes:Record<string,string>;fallbackProfileId:string;fallbackEnabled:boolean}|{section:'mineru'|'preview'|'advanced';[key:string]:unknown};
-export interface TestJob{id:string;status:string;stage?:string;message?:string;transport?:'acp'|'chatgpt'|'api';}
+/** Interactive job families with their own /api/<kind>/jobs endpoints (docs/API.md §7). */
+export type JobKind='acp'|'chatgpt'|'preview';
+export interface TestJob{id:string;status:string;stage?:string;message?:string;transport?:'acp'|'chatgpt'|'api'|'preview';}
+export interface PreviewStatus{status:'ready'|'queued'|'running'|'error'|'missing'|string;engine?:string;pages?:number;direct?:boolean;warning?:string;error?:string;stage?:string;}
 export interface InteractiveJobView extends InteractiveJob{phaseStarted?:number;authorizationUrl?:string;text?:string;modelLabel?:string;permission?:{id:string;title:string;details?:string;options:{optionId:string;name:string;kind:string}[]}|null;result?:{message?:string;models?:{modelId:string;name?:string}[];currentModel?:string;[k:string]:unknown};}
 export interface ChatgptStatus{connected:boolean;email:string;pending:boolean;permissionDeclined:boolean;error:string;}
 export type ProcessMode='preparation'|'reference'|'session'|'analysis'|'week';
@@ -75,6 +78,8 @@ export const api={
  /** Starts a background generation; the task then shows up in project.tasks. */
  process:(id:string,mode:ProcessMode,ref?:string)=>post<unknown>(project(id)+'/process',{mode,...(ref?(mode==='session'||mode==='analysis'?{sessionId:ref}:{sourceId:ref}):{})}),
  /** Weekly Deep Dive over the chosen classes (only classes that have a transcript). */
+ /** Translates a reference; with a profile, the remaining paragraphs use that model this time only. */
+ processReference:(id:string,sourceId:string,referenceProfileId?:string)=>post<unknown>(project(id)+'/process',{mode:'reference',sourceId,...(referenceProfileId?{referenceProfileId}:{})}),
  processWeek:(id:string,sessionIds:string[])=>post<unknown>(project(id)+'/process',{mode:'week',sessionIds}),
  /** A generated Markdown document (Deep Dive, transcript) as text. */
  outputText:async(id:string,name:string,scope:string)=>{
@@ -103,6 +108,18 @@ export const api={
  outputUrl:(id:string,name:string,scope:string)=>project(id)+'/output?name='+encodeURIComponent(name)+'&scope='+encodeURIComponent(scope)+'&download=1',
  sourceUrl:(id:string,sourceId:string)=>project(id)+'/source?id='+encodeURIComponent(sourceId),
 
+ // Original-page previews of courseware (docs/API.md §5).
+ previewStatus:(id:string,sourceId:string)=>request<PreviewStatus>(project(id)+'/preview-status?source='+encodeURIComponent(sourceId)),
+ /** Converts the courseware to a PDF preview in the background (PowerPoint or LibreOffice, see settings). */
+ previewEnsure:(id:string,sourceId:string,force=false)=>post<PreviewStatus>(project(id)+'/preview?source='+encodeURIComponent(sourceId),{force}),
+ /** Links a PDF the user exported from the courseware (raw bytes, at most 150 MB). */
+ previewAssociate:(id:string,sourceId:string,file:File)=>request<PreviewStatus>(project(id)+'/preview-pdf?source='+encodeURIComponent(sourceId),{method:'POST',body:file}),
+ previewClear:(id:string,sourceId:string)=>post<unknown>(project(id)+'/preview-clear?source='+encodeURIComponent(sourceId),{}),
+ previewFileUrl:(id:string,sourceId:string)=>project(id)+'/preview-file?source='+encodeURIComponent(sourceId),
+ previewSourceUrl:(id:string,sourceId:string)=>project(id)+'/preview-source?source='+encodeURIComponent(sourceId),
+ /** Trial-parses one slide with the model assigned to it; the result is only shown, never saved. */
+ pptPagePreview:(id:string,sourceId:string,pageIndex:number)=>post<TestJob>(project(id)+'/ppt-page-preview',{sourceId,pageIndex}),
+
  // Overview: the week, its materials and classes (docs/API.md §1–3). Deletions are two-step: plan, then confirm.
  weekRename:(id:string,name:string)=>post<Project>(project(id)+'/week-rename',{name}),
  weekDeletePlan:(id:string)=>request<WeekDeletePlan>(project(id)+'/week-delete-plan'),
@@ -128,9 +145,9 @@ export const api={
  sessionDelete:(id:string,sessionId:string)=>post<Project>(project(id)+'/session-delete',{sessionId,confirm:true}),
  ask:(id:string,question:string,scope:string,focus:unknown=null)=>post<AskResult>(project(id)+'/ask',{question,scope,focus}),
  cancelAiParse:(id:string,sourceId:string)=>post<unknown>(project(id)+'/ai-parse-cancel',{sourceId}),
- job:(kind:'acp'|'chatgpt',jobId:string)=>request<InteractiveJobView>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)),
- cancelJob:(kind:'acp'|'chatgpt',jobId:string)=>post<unknown>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)+'/cancel',{}),
- answerPermission:(kind:'acp'|'chatgpt',jobId:string,permissionId:string,optionId:string|null)=>post<unknown>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)+'/permission',{permissionId,optionId}),
+ job:(kind:JobKind,jobId:string)=>request<InteractiveJobView>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)),
+ cancelJob:(kind:JobKind,jobId:string)=>post<unknown>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)+'/cancel',{}),
+ answerPermission:(kind:JobKind,jobId:string,permissionId:string,optionId:string|null)=>post<unknown>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)+'/permission',{permissionId,optionId}),
 
  // Settings (docs/API.md §8). Keys and tokens are write-only: the editor only reports hasApiKey / hasMineruToken.
  settings:()=>request<Settings>('/api/settings/editor'),

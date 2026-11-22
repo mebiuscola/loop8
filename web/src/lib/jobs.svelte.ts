@@ -25,8 +25,9 @@ export class JobRun{
   this.state={...this.state,running:true,stage:'正在开始…',message:'',failed:false,loginUrl:'',permission:null,text:''};
   try{
    const job=await start();
-   // 'api' tests (and MinerU tests) are polled through /api/settings/test; only ACP and ChatGPT are interactive jobs.
-   const transport=job.transport==='acp'||job.transport==='chatgpt'?job.transport:undefined;
+   // 'api' tests (and MinerU tests) are polled through /api/settings/test; ACP, ChatGPT and
+   // single-slide trial parsing ('preview') have their own interactive job endpoints.
+   const transport=job.transport==='acp'||job.transport==='chatgpt'||job.transport==='preview'?job.transport:undefined;
    this.state.cancel=()=>{this.stopped=true;(transport?api.cancelJob(transport,job.id):api.cancelTest(job.id)).catch(()=>{});this.state.stage='正在停止…';};
    if(transport)this.state.answer=optionId=>{const p=this.state.permission;if(p)api.answerPermission(transport,job.id,p.id,optionId).catch(e=>this.state.message=e.message);};
    for(;;){

@@ -4,6 +4,7 @@
  import Icon from '../Icon.svelte';
  import Modal from '../Modal.svelte';
  import StatusBadge from '../StatusBadge.svelte';
+ import ErrorNote from '../ErrorNote.svelte';
  import {api,ApiError,type CoursewareReader,type PartialResults,type Project,type ReferenceReader,type Role,type SourceFile} from '../../lib/api';
  import {courseHref} from '../../lib/router.svelte';
  import {store} from '../../lib/store.svelte';
@@ -134,7 +135,7 @@
   </div>
  </div>
 
- {#if message||error}<p class="line" class:error={!!error} role={error?'alert':'status'}>{error||message}</p>{/if}
+ {#if error}<p class="line"><ErrorNote text={error}/></p>{:else if message}<p class="line" role="status">{message}</p>{/if}
 
  {#if hasDetails}
   <details class="details">

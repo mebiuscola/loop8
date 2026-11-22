@@ -4,7 +4,7 @@
  import JobView from './JobView.svelte';
  import ModelRow from './ModelRow.svelte';
  import {api,ApiError,type ChatgptStatus} from '../../lib/api';
- import {JobRun} from '../../lib/jobs.svelte';
+ import {acpAccount,acpErrorStatus} from '../../lib/acp-account.svelte';
  import {providerOf,type AccountKind,type SettingsModel} from '../../lib/settings.svelte';
 
  let {kind,model}:{kind:AccountKind;model:SettingsModel}=$props();
@@ -15,39 +15,36 @@
  const nameOf=(id:string)=>available.find(m=>m.modelId===id)?.name||id;
 
  // ---- Antigravity ----
- const job=new JobRun();
+ // Sign-in state is shared (lib/acp-account) so it survives switching settings pages.
+ const account=acpAccount,job=account.job,quiet=account.quiet;
  let showPath=$state(false);
  // The backend signs in and lists models as two steps: "login" only authenticates
  // (reusing a valid sign-in), "inspect" opens a session and reads the model list.
  // A saved Google sign-in stays valid between visits. On opening the page we quietly
  // read the model list ("inspect" never opens a sign-in page): success means still signed in.
- type AcpStatus='unknown'|'checking'|'ok'|'needLogin'|'error';
- let acpStatus=$state<AcpStatus>('unknown'),acpProblem=$state('');
- const quiet=new JobRun();
+ const acpStatus=$derived(account.status),acpProblem=$derived(account.problem);
+ function failed(e:unknown){const m=(e as Error).message||'';account.status=acpErrorStatus(m);account.problem=m;}
  async function silentCheck(){
-  acpStatus='checking';acpProblem='';
+  account.status='checking';account.problem='';
   try{
    const result:any=await quiet.run(()=>api.modelTest('inspect',model.accountProbe('acp')));
    if(Array.isArray(result?.models))model.setAccountModels('acp',result.models);
-   acpStatus='ok';
-  }catch(e){
-   const m=(e as Error).message||'';
-   acpStatus=/需要官方登录|登录|auth|sign.in/i.test(m)?'needLogin':'error';acpProblem=m;
-  }
+   account.status='ok';
+  }catch(e){failed(e);}
  }
  async function signIn(){
   try{
-   if(acpStatus!=='ok')await job.run(()=>api.modelTest('login',model.accountProbe('acp')));
+   if(account.status!=='ok'){await job.run(()=>api.modelTest('login',model.accountProbe('acp')));account.status='ok';account.problem='';}
    const result:any=await job.run(()=>api.modelTest('inspect',model.accountProbe('acp')));
    const models=Array.isArray(result?.models)?result.models:[];
-   model.setAccountModels('acp',models);acpStatus='ok';acpProblem='';
+   model.setAccountModels('acp',models);account.status='ok';account.problem='';
    job.state.message=models.length?'已登录，读取到 '+models.length+' 个可用模型。现在可以在"模型分配"中选择它们。':'已登录，但 Antigravity 没有返回可用模型。请稍后点"刷新可用模型"重试。';
-  }catch{/* shown by JobView */}
+  }catch(e){if(account.status!=='ok')failed(e);/* the message is shown by JobView */}
  }
  let confirmLogout=$state(false),logoutMessage=$state('');
  async function logout(){
   confirmLogout=false;logoutMessage='正在退出…';
-  try{const r=await api.acpLogout(inUse[0].id);logoutMessage=r?.message||'已退出登录。';model.setAccountModels('acp',[]);acpStatus='needLogin';}
+  try{const r=await api.acpLogout(inUse[0].id);logoutMessage=r?.message||'已退出登录。';model.setAccountModels('acp',[]);account.status='needLogin';account.problem='';}
   catch(e){logoutMessage=(e as Error).message;}
  }
 
@@ -68,7 +65,7 @@
  async function readChatModels(){try{model.setAccountModels('chatgpt',(await api.chatgptModels()).models);chatError='';}catch(e){chatError=(e as Error).message;}}
  async function disconnect(){try{await api.chatgptDisconnect();model.setAccountModels('chatgpt',[]);await refresh();}catch(e){chatError=(e as Error).message;}}
  // Only check when Antigravity has been used before, so a fresh install starts nothing.
- onMount(()=>{if(!acp)refresh();else if(model.acpExecutable&&(inUse.length||available.length))silentCheck();});
+ onMount(()=>{if(!acp)refresh();else if(account.status==='unknown'&&!account.busy&&model.acpExecutable&&(inUse.length||available.length))silentCheck();});
  const acpLabel=$derived(
   acpStatus==='checking'?'正在确认登录…':
   acpStatus==='ok'?'已登录 · 可用模型 '+available.length+' 个':
@@ -107,7 +104,7 @@
    {#if inUse.length}
     {#if confirmLogout}
      <span class="confirm">退出后，所有 Antigravity 模型都需要重新登录才能使用。<button class="btn" type="button" onclick={logout}>确定退出</button><button class="btn btn-quiet" type="button" onclick={()=>confirmLogout=false}>取消</button></span>
-    {:else}<button class="btn btn-quiet" type="button" onclick={()=>confirmLogout=true}>退出登录</button>{/if}
+    {:else}<button class="btn btn-quiet" type="button" disabled={account.busy} onclick={()=>confirmLogout=true}>退出登录</button>{/if}
    {/if}
   </div>
   {#if acpStatus==='needLogin'}<p class="muted small">Antigravity 的登录已失效，点"重新登录"在浏览器中完成授权。</p>

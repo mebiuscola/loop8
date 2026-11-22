@@ -10,9 +10,15 @@ export type Route={page:'home'}|{page:'settings'}|{page:'course';courseId:string
 
 const LAST_KEY='classroom.next.lastPlace';
 const COURSE_KEY='classroom.next.lastCourse';
+const PLACE_KEY='classroom.next.lastWorkspacePlace';   // per course, the last place in each workspace
 
 function storage<T>(key:string,fallback:T):T{try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch{return fallback;}}
 function store(key:string,value:unknown){try{localStorage.setItem(key,JSON.stringify(value));}catch{/* private mode */}}
+function rememberPlace(route:Route,hash:string){
+ if(route.page!=='course')return;
+ const all=storage<Record<string,Record<string,string>>>(PLACE_KEY,{});
+ (all[route.courseId]??={})[route.workspace]=hash;store(PLACE_KEY,all);
+}
 
 function parse(hash:string):Route{
  const parts=hash.replace(/^#\/?/,'').split('/').map(decodeURIComponent);
@@ -44,8 +50,13 @@ class Router{
   }
   if(route.page==='course'){
    const all=storage<Record<string,string>>(LAST_KEY,{});all[route.courseId]=location.hash;store(LAST_KEY,all);store(COURSE_KEY,route.courseId);
+   rememberPlace(route,location.hash);
   }
   this.route=route;
+ }
+ /** A workspace tab returns to the last place viewed in that workspace of the course. */
+ placeHref(courseId:string,workspace:Workspace){
+  return storage<Record<string,Record<string,string>>>(PLACE_KEY,{})[courseId]?.[workspace]||courseHref(courseId,workspace);
  }
  /** Course to show when the app opens with no hash. */
  lastCourse():string|null{return storage<string|null>(COURSE_KEY,null);}
@@ -55,7 +66,7 @@ class Router{
   if(location.hash===hash)return;
   history.replaceState(null,'',hash);
   const route=parse(hash);
-  if(route.page==='course'){const all=storage<Record<string,string>>(LAST_KEY,{});all[route.courseId]=hash;store(LAST_KEY,all);}
+  if(route.page==='course'){const all=storage<Record<string,string>>(LAST_KEY,{});all[route.courseId]=hash;store(LAST_KEY,all);rememberPlace(route,hash);}
  }
 }
 

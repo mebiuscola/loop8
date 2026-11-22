@@ -27,10 +27,16 @@ export function drawPage(doc:PdfDoc,pageIndex:number,canvas:HTMLCanvasElement,wi
   const page=await doc.getPage(pageIndex+1);if(cancelled)return;
   const base=page.getViewport({scale:1}),scale=width/base.width,ratio=window.devicePixelRatio||1;
   const viewport=page.getViewport({scale:scale*ratio});
-  canvas.width=Math.floor(viewport.width);canvas.height=Math.floor(viewport.height);
-  canvas.style.width=Math.floor(viewport.width/ratio)+'px';canvas.style.height=Math.floor(viewport.height/ratio)+'px';
-  renderTask=page.render({canvasContext:canvas.getContext('2d')!,viewport});
+  // Draw off-screen, then copy: drawing straight into a canvas inside an open <dialog>
+  // never finished in testing, and the copy also avoids a half-drawn page on screen.
+  const work=document.createElement('canvas');
+  work.width=Math.floor(viewport.width);work.height=Math.floor(viewport.height);
+  renderTask=page.render({canvasContext:work.getContext('2d')!,viewport});
   await renderTask.promise;
+  if(cancelled)return;
+  canvas.width=work.width;canvas.height=work.height;
+  canvas.style.width=Math.floor(viewport.width/ratio)+'px';canvas.style.height=Math.floor(viewport.height/ratio)+'px';
+  canvas.getContext('2d')!.drawImage(work,0,0);
  })();
  return {done,cancel:()=>{cancelled=true;renderTask?.cancel();}};
 }

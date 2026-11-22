@@ -2,8 +2,15 @@
  import {untrack} from 'svelte';
  import Icon from '../Icon.svelte';
  import StatusBadge from '../StatusBadge.svelte';
+ import ErrorNote from '../ErrorNote.svelte';
  import CoursewareReader from './CoursewareReader.svelte';
  import ReferenceReader from './ReferenceReader.svelte';
+ import RetryDialog from './RetryDialog.svelte';
+ import OriginalPage from './OriginalPage.svelte';
+ import PreviewDialog from './PreviewDialog.svelte';
+ import TrialDialog from './TrialDialog.svelte';
+ import Modal from '../Modal.svelte';
+ import {CoursePreview} from '../../lib/preview.svelte';
  import {api,ApiError,type Project,type CoursewareReader as CR,type ReferenceReader as RR} from '../../lib/api';
  import {router,courseHref} from '../../lib/router.svelte';
  import {store} from '../../lib/store.svelte';
@@ -11,6 +18,8 @@
  import {coursewareStatus,referenceStatus,type MaterialStatus} from '../../lib/reading';
 
  let {project,rest}:{project:Project;rest:string}=$props();
+ // Original-page preview of the courseware shown (set up further below).
+ let preview=$state<CoursePreview|null>(null);
 
  type Kind='ppt'|'ref';
  // rest = "<ppt|ref>/<sourceId>/p/<page>"
@@ -49,6 +58,8 @@
   return k==='ppt'?coursewareStatus(project,f,readers[id] as CR|null):referenceStatus(project,f,readers[id] as RR|null);
  };
  const current=$derived(file?readers[file.id]:null);
+ // Reference paragraphs without a translation yet (e.g. refused by a model); they can be finished with another model.
+ const untranslated=$derived(kind==='ref'&&current?(current as RR).summary.total-(current as RR).summary.completed:0);
  const status=$derived(file?statusOf(kind,file.id):null);
 
  // Columns the reader shows; remembered per kind.
@@ -61,7 +72,7 @@
  let page=$state(1),pageCount=$state(0),seq=0;
  let jump=$state<{page:number;seq:number}>({page:1,seq:0});
  $effect(()=>{const p=parsed.page;page=p;jump={page:p,seq:++seq};});
- const total=$derived(current?(kind==='ppt'?(current as CR).pages.length:pageCount):0);
+ const total=$derived(current?(kind==='ppt'?Math.max((current as CR).pages.length,(current as CR).nativePageCount||0,preview?.status?.pages||0):pageCount):0);
  function onPage(n:number){
   page=n;
   if(file)router.remember(href(kind,file.id,n));
@@ -98,6 +109,17 @@
  let menuOpen=$state(false);
  let menuWrap:HTMLElement;
  function outside(event:MouseEvent){if(menuOpen&&menuWrap&&!menuWrap.contains(event.target as Node))menuOpen=false;}
+
+ // Original-page preview of the courseware shown (one at a time).
+ $effect(()=>{
+  const id=kind==='ppt'?file?.id:undefined,name=file?.name||'';
+  if(!id){untrack(()=>{preview?.destroy();preview=null;});return;}
+  const next=new CoursePreview(project.id,id,name);
+  untrack(()=>{preview?.destroy();preview=next;});
+  return ()=>next.destroy();
+ });
+ let dialog=$state<''|'preview'|'trial'|'enlarge'|'retry'>(''),dialogPage=$state(0);
+ function openDialog(kind:'preview'|'trial'|'enlarge'|'retry',pageIndex=page-1){menuOpen=false;dialogPage=pageIndex;dialog=kind;}
 </script>
 
 <svelte:window onclick={outside} onkeydown={e=>{if(e.key==='Escape')menuOpen=false;}}/>
@@ -134,9 +156,17 @@
      <div class="menu-list" role="menu">
       {#if file&&kind==='ppt'}<a role="menuitem" href={'/api/projects/'+encodeURIComponent(project.id)+'/source?id='+encodeURIComponent(file.id)}>下载原件</a>{/if}
       {#if file&&kind==='ref'}<a role="menuitem" href={api.referenceFileUrl(project.id,file.id)} target="_blank" rel="noopener">打开原始 PDF <Icon name="external" size={12}/></a>{/if}
-      <div class="menu-sep" role="separator"></div>
-      <span class="menu-label">高级（暂在旧界面）</span>
-      <a role="menuitem" href="/" target="_blank" rel="noopener">预览方式、关联导出 PDF、试解析本页 <Icon name="external" size={12}/></a>
+      {#if file&&kind==='ref'&&untranslated&&status?.kind!=='running'&&status?.kind!=='stale'}
+       <div class="menu-sep" role="separator"></div>
+       <span class="menu-label">高级</span>
+       <button role="menuitem" onclick={()=>openDialog('retry')}>用其他模型补译…</button>
+      {/if}
+      {#if file&&kind==='ppt'}
+       <div class="menu-sep" role="separator"></div>
+       <span class="menu-label">高级</span>
+       <button role="menuitem" onclick={()=>openDialog('preview')}>原页预览…</button>
+       <button role="menuitem" disabled={!total} onclick={()=>openDialog('trial')}>试解析第 {page} 页…</button>
+      {/if}
      </div>
     {/if}
    </div>
@@ -153,7 +183,7 @@
    {#if kind==='ppt'&&current&&(current as CR).previewIssue}<span class="note">原页预览：{(current as CR).previewIssue}</span>{/if}
    {#if kind==='ref'&&current&&(current as RR).sourceWarnings?.missingPages?.length}<span class="note">有 {(current as RR).sourceWarnings!.missingPages!.length} 页原文未能解析</span>{/if}
    {#if kind==='ppt'&&list.length>1&&action}<span class="note">课件导读按整周生成，会处理本周全部课件。</span>{/if}
-   {#if actionError}<span class="error" role="alert">{actionError}</span>{/if}
+   {#if actionError}<ErrorNote text={actionError}/>{/if}
   </div>
  {/if}
 
@@ -170,7 +200,8 @@
    <p class="loading">正在读取…</p>
   {:else if kind==='ppt'}
    {#key file?.id}
-    <CoursewareReader projectId={project.id} reader={current as CR} columns={columns.ppt} {jump} onpage={onPage}/>
+    <CoursewareReader projectId={project.id} reader={current as CR} columns={columns.ppt} {jump} onpage={onPage}
+     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} onenlarge={i=>openDialog('enlarge',i)}/>
    {/key}
   {:else}
    {#key file?.id}
@@ -179,6 +210,15 @@
   {/if}
  </div>
 </div>
+
+{#if dialog==='preview'&&preview}<PreviewDialog {preview} projectId={project.id} onclose={()=>dialog=''}/>{/if}
+{#if dialog==='retry'&&file&&kind==='ref'}<RetryDialog projectId={project.id} sourceId={file.id} fileName={file.name} remaining={untranslated} onclose={()=>dialog=''} onstarted={()=>{dialog='';store.refresh();}}/>{/if}
+{#if dialog==='trial'&&file}<TrialDialog projectId={project.id} sourceId={file.id} fileName={file.name} pageIndex={dialogPage} onclose={()=>dialog=''}/>{/if}
+{#if dialog==='enlarge'&&preview&&current&&kind==='ppt'}
+ <Modal title={'第 '+(dialogPage+1)+' 页 · 原页'} onclose={()=>dialog=''} wide closeLabel="关闭">
+  <OriginalPage projectId={project.id} reader={current as CR} pageIndex={dialogPage} mode={preview.mode} pdf={preview.pdf} pptx={preview.pptx} reload={preview.reload} large/>
+ </Modal>
+{/if}
 
 <style>
  .read{display:flex;flex-direction:column;height:100%;min-height:0;}
@@ -195,13 +235,15 @@
  .end{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);}
  .menu{position:relative;}
  .menu-list{position:absolute;right:0;top:calc(100% + var(--space-1));min-width:260px;padding:var(--space-1);background:var(--bg-raised);border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-panel);z-index:10;display:flex;flex-direction:column;}
+ .menu-list button{display:flex;align-items:center;padding:var(--space-2) var(--space-3);border:0;border-radius:var(--radius-sm);background:transparent;color:var(--fg);font-size:var(--text-sm);text-align:left;}
+ .menu-list button:hover:not(:disabled){background:var(--sand-100);}
+ .menu-list button:disabled{color:var(--fg-subtle);}
  .menu-list a{display:flex;align-items:center;gap:var(--space-1);padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);color:var(--fg);text-decoration:none;font-size:var(--text-sm);}
  .menu-list a:hover{background:var(--sand-100);}
  .menu-sep{height:1px;margin:var(--space-1) 0;background:var(--line);}
  .menu-label{padding:var(--space-1) var(--space-3);font-size:var(--text-xs);color:var(--fg-muted);}
  .statusline{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--line);font-size:var(--text-sm);}
  .note{color:var(--fg-muted);}
- .error{color:var(--status-failed-fg);}
  .body{flex:1;min-height:0;position:relative;}
  .empty{max-width:520px;margin:var(--space-6) auto;padding:0 var(--space-4);}
  .empty h2{font-size:var(--text-lg);margin-bottom:var(--space-2);}

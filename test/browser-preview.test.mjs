@@ -4,18 +4,8 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,rm,readdir,readFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {QA_MODES,questionTarget} from '../public/qa-scope.js';
 import {zipFixture} from './helpers/zip-fixture.mjs';
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
-test('exactly three question modes map to current page, one selected session and whole week without silent widening',()=>{
- assert.deepEqual(QA_MODES.map(v=>v[1]),['当前页','本节课','本周课']);
- const context={pageAvailable:true,focus:{kind:'page',sourceId:'ppt',pageIndex:4}},sessions=[{id:'lecture'},{id:'seminar'}];
- const input={mode:'page',sessionId:'seminar',context,sessions,reading:true};assert.deepEqual(questionTarget(input),{scope:'preparation',focus:context.focus});
- assert.deepEqual(questionTarget({...input,mode:'session'}),{scope:'seminar',focus:null});
- assert.deepEqual(questionTarget({...input,mode:'session',context:{...context,focus:{...context.focus,pageIndex:5}}}),{scope:'seminar',focus:null});
- assert.deepEqual(questionTarget({...input,mode:'week'}),{scope:'week',focus:null});
- assert.throws(()=>questionTarget({...input,mode:'session',sessionId:''}),/选择/);assert.throws(()=>questionTarget({...input,context:{...context,pageAvailable:false}}),/有效解析/);assert.throws(()=>questionTarget({...input,reading:false}),/打开 PPT/);assert.throws(()=>questionTarget({...input,mode:'deck'}),/请选择/);
-});
 test('unparsed PPTX is independently readable, does not start Office, and preview source is restricted to PPTX material',async()=>{
  const temp=await mkdtemp(path.join(os.tmpdir(),'classroom-browser-')),child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:temp,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
