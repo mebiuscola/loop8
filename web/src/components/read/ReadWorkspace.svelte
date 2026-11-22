@@ -161,8 +161,8 @@
   {#if !list.length}
    <div class="empty">
     <h2>{kind==='ppt'?'本周还没有课件':'本周还没有参考文献'}</h2>
-    <p>在"概览"中添加文件后会出现在这里。概览迁移完成前，请在旧界面上传。</p>
-    <a class="btn btn-primary" href="/" target="_blank" rel="noopener">在旧界面上传 <Icon name="external" size={14}/></a>
+    <p>在"概览"中添加文件后会出现在这里。</p>
+    <a class="btn btn-primary" href={courseHref(project.id,'overview')}>去概览添加文件</a>
    </div>
   {:else if file&&loadError[file.id]}
    <div class="empty"><h2>无法读取这份材料</h2><p>{loadError[file.id]}</p><button class="btn" onclick={()=>load(kind,file.id,true)}>重试</button></div>

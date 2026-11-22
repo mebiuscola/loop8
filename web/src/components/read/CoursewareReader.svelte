@@ -45,7 +45,7 @@
  </div>
 
  {#if !reader.pages.length}
-  <p class="empty">这份课件还没有可读的页面。请先在旧界面中解析课件。</p>
+  <p class="empty">这份课件还没有可读的页面。请先在"概览"中为它生成导读。</p>
  {/if}
 
  {#each reader.pages as p (p.pageIndex)}

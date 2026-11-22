@@ -1,11 +1,12 @@
 <script lang="ts">
+ import {onMount} from 'svelte';
  import Sidebar from './components/Sidebar.svelte';
  import TopBar from './components/TopBar.svelte';
  import AskPanel from './components/AskPanel.svelte';
- import Pending from './components/Pending.svelte';
  import ReadWorkspace from './components/read/ReadWorkspace.svelte';
  import ClassWorkspace from './components/class/ClassWorkspace.svelte';
  import DeepDiveWorkspace from './components/deepdive/DeepDiveWorkspace.svelte';
+ import OverviewWorkspace from './components/overview/OverviewWorkspace.svelte';
  import SettingsPage from './components/settings/SettingsPage.svelte';
  import {store} from './lib/store.svelte';
  import {router,courseHref} from './lib/router.svelte';
@@ -17,6 +18,14 @@
  let askOpen=$state(read('classroom.next.askOpen',false));   // collapsed by default (IA decision Q4)
  $effect(()=>write('classroom.next.sidebarCollapsed',sidebarCollapsed));
  $effect(()=>write('classroom.next.askOpen',askOpen));
+ // On a narrow window the course list collapses by itself so the workspace keeps its width;
+ // it can still be opened with its own button.
+ onMount(()=>{
+  const narrow=matchMedia('(max-width: 760px)');
+  const fit=()=>{if(narrow.matches)sidebarCollapsed=true;};
+  fit();narrow.addEventListener('change',fit);
+  return ()=>narrow.removeEventListener('change',fit);
+ });
 
  const route=$derived(router.route);
  $effect(()=>{store.open(route.page==='course'?route.courseId:null);});
@@ -30,12 +39,6 @@
  });
 
  const showAsk=$derived(route.page==='course'&&askOpen&&!!store.current);
- const pending={
-  overview:{title:'概览',description:'本周的材料、课堂和 Deep Dive 的状态与下一步，以及上传文件。'},
-  read:{title:'阅读',description:'课件和参考文献的原页、双语译文与细读。'},
-  class:{title:'课堂',description:'每节课的字幕、录音和双语讲稿。'},
-  deepdive:{title:'Deep Dive',description:'本节 Deep Dive 和整周 Deep Dive。'},
- };
 </script>
 
 <div class="frame" class:sidebar-collapsed={sidebarCollapsed} class:with-ask={showAsk}>
@@ -58,10 +61,10 @@
      <ReadWorkspace project={store.current} rest={route.rest}/>
     {:else if route.workspace==='class'}
      <ClassWorkspace project={store.current} rest={route.rest}/>
-    {:else if route.workspace==='deepdive'}
-     <DeepDiveWorkspace project={store.current} rest={route.rest}/>
+    {:else if route.workspace==='overview'}
+     <OverviewWorkspace project={store.current}/>
     {:else}
-     <Pending {...pending[route.workspace]}/>
+     <DeepDiveWorkspace project={store.current} rest={route.rest}/>
     {/if}
    {:else if store.loaded&&!store.connectionError}
     <section class="message">
