@@ -1,5 +1,6 @@
 <script lang="ts">
  import Icon from './Icon.svelte';
+ import RichText from './RichText.svelte';
  import {api,ApiError,type Project,type ChatMessage} from '../lib/api';
  import {store} from '../lib/store.svelte';
  import {askContext} from '../lib/ask-context.svelte';
@@ -71,7 +72,7 @@
   {#each history as m, i (m.at+m.role+i)}
    <article class="msg {m.role}" class:current={m.scope===activeScope}>
     <div class="meta">{m.role==='user'?'我':'AI 回答'} · <span class="scope">{scopeLabel(m)}</span></div>
-    <div class="text">{m.text}</div>
+    {#if m.role==='assistant'}<RichText text={m.text} {project}/>{:else}<div class="text">{m.text}</div>{/if}
    </article>
   {:else}
    <p class="empty">还没有提问。问题会根据所选范围内的材料、讲稿和分析来回答。</p>

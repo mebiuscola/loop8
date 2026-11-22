@@ -11,8 +11,11 @@
 
  let {project,rest}:{project:Project;rest:string}=$props();
 
- // rest = "<sessionId>/p/<paragraph>"
- const parsed=$derived.by(()=>{const [id,,n]=rest.split('/');return {sessionId:id||'',paragraph:Math.max(0,(Number(n)||1)-1)};});
+ // rest = "<sessionId>/p/<paragraph>", or "<sessionId>/t/<ms>" for a moment cited in an answer.
+ const parsed=$derived.by(()=>{
+  const [id,mark,n]=rest.split('/');
+  return {sessionId:id||'',paragraph:mark==='p'?Math.max(0,(Number(n)||1)-1):0,timeMs:mark==='t'&&/^\d+$/.test(n||'')?Number(n):null};
+ });
  const sessions=$derived(project.sessions);
  const session=$derived(sessions.find(s=>s.id===parsed.sessionId)||sessions[0]||null);
  const href=(s:Session,paragraph=0)=>courseHref(project.id,'class',encodeURIComponent(s.id)+(paragraph?'/p/'+(paragraph+1):''));
@@ -46,8 +49,15 @@
 
  // ---- position: the paragraph in view is kept in the URL ----
  let seq=0;
- let jump=$state({index:0,seq:0});
- $effect(()=>{const p=parsed.paragraph;session?.id;jump={index:p,seq:++seq};});
+ let jump=$state({index:0,seq:0,flash:false});
+ $effect(()=>{
+  const p=parsed.paragraph,t=parsed.timeMs;session?.id;
+  if(t===null){untrack(()=>jump={index:p,seq:++seq,flash:false});return;}
+  // A cited moment: wait for the transcript, open the paragraph containing it, then keep a normal URL.
+  if(!transcript?.available||!session)return;
+  const list=transcript.paragraphs;let index=list.findIndex(x=>t<x.endMs);if(index<0)index=list.length-1;
+  untrack(()=>{jump={index,seq:++seq,flash:true};router.remember(href(session,index));});
+ });
  function onParagraph(n:number){if(session)router.remember(href(session,n));}
 
  $effect(()=>{

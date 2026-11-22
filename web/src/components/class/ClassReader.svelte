@@ -8,7 +8,7 @@
  type Ready=Extract<Transcript,{available:true}>;
  let {projectId,sessionId,data,jump,onparagraph,onproject,onupload}:{
   projectId:string;sessionId:string;data:Ready;
-  jump:{index:number;seq:number};
+  jump:{index:number;seq:number;flash?:boolean};
   onparagraph:(index:number)=>void;
   onproject:(p:Project)=>void;
   onupload:()=>void;
@@ -83,7 +83,12 @@
  let lastJump=-1;
  // The first paragraph means the top, so the legend and first heading stay visible.
  // (setTimeout, not requestAnimationFrame: rAF does not run in a background window.)
- $effect(()=>{const j=jump;if(j.seq===lastJump)return;lastJump=j.seq;setTimeout(()=>{const i=Math.min(j.index,paragraphs.length-1);if(i<=0){autoScrollUntil=Date.now()+600;scroller?.scrollTo({top:0});}else scrollTo(i);},30);});
+ let flash=$state(-1);
+ $effect(()=>{const j=jump;if(j.seq===lastJump)return;lastJump=j.seq;setTimeout(()=>{
+  const i=Math.min(j.index,paragraphs.length-1);
+  if(j.flash){scrollTo(i);flash=i;setTimeout(()=>{if(flash===i)flash=-1;},3000);}
+  else if(i<=0){autoScrollUntil=Date.now()+600;scroller?.scrollTo({top:0});}else scrollTo(i);
+ },30);});
 
  // ---- controls ----
  async function seek(index:number,only=false){
@@ -117,7 +122,7 @@
    {#each paragraphs as p,i (p.id)}
     {#if chapters.has(i)}<h2 id={'ch-'+i}>{chapters.get(i)}</h2>{/if}
     {@const prev=paragraphs[i-1]}
-    <section class="para" class:playing={i===active} data-p={i}>
+    <section class="para" class:playing={i===active} class:flash={i===flash} data-p={i}>
      <div class="meta">
       <button class="time" type="button" onclick={()=>seek(i)} disabled={!playable} title={playable?'从这里播放':audio?'录音未关联当前字幕':'上传录音后可播放'}>{playable?'▶ ':''}{clock(p.startMs)}</button>
       {#if !prev||prev.speaker!==p.speaker||chapters.has(i)}<span class="speaker {p.speaker==='Lecturer'?'lecturer':p.speaker==='Student'?'student':'unclear'}">{speakerLabel[p.speaker]}</span>{/if}
@@ -192,6 +197,7 @@
  h2{font-size:var(--text-lg);margin:var(--space-5) 0 var(--space-3);padding-top:var(--space-2);border-top:1px solid var(--line);}
  .para{padding:var(--space-2) var(--space-3);margin:0 0 var(--space-2);border-radius:var(--radius-sm);scroll-margin-top:var(--space-4);}
  .para.playing{background:var(--status-running-bg);}
+ .para.flash{box-shadow:inset 3px 0 0 var(--accent);background:var(--accent-soft);transition:background .6s;}
  .meta{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-1);}
  .time{border:0;background:transparent;padding:0;font-size:var(--text-xs);color:var(--accent);font-variant-numeric:tabular-nums;cursor:pointer;}
  .time:disabled{color:var(--fg-muted);cursor:default;}
