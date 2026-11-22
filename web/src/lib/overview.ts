@@ -34,7 +34,7 @@ export function materialView(p:Project,f:SourceFile,reader?:CoursewareReader|Ref
   return {kind:'idle',text:'读取中…',step:null};
  }
 
- // Reading and BB PDFs are first parsed (MinerU, or an imported parse).
+ // Reading and BB PDFs are first parsed (their own text layer, MinerU for scans, or an imported parse).
  if(!f.parsed){
   if(f.parseStatus==='failed')return {kind:'failed',text:'解析失败'+(f.error?' · 详见详情':''),step:{kind:'parse-pdf',label:'重新解析'}};
   return {kind:'idle',text:'待解析',step:{kind:'parse-pdf',label:'解析 PDF'}};

@@ -82,7 +82,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 ## 4. 生成任务
 
-`POST /api/projects/:id/process`，体：`{mode, sessionId?, sourceId?, referenceProfileId?}`
+`POST /api/projects/:id/process`，体：`{mode, sessionId?, sourceId?, referenceProfileId?, engine?}`
 
 | mode | 内容 | 用到的模型任务 |
 |---|---|---|
@@ -91,7 +91,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | `analysis` | 本节课 Deep Dive | context, deepDive |
 | `week` | 整周 Deep Dive | context, weeklyDeepDive |
 | `reference` | 参考文献翻译 | referenceTranslation |
-| `reading` | Reading / BB PDF 解析（需 `sourceId`） | — |
+| `reading` | Reading / BB PDF 解析（需 `sourceId`）。先读 PDF 自带文字层，扫描件或文字损坏时交给 MinerU；`engine:"mineru"` 始终用 MinerU。完成后文件带 `parseSource`：`text-layer` 或 `mineru`（旧数据和导入的解析没有此字段） | — |
 
 若所选模型是 ACP 或 ChatGPT 订阅，返回值中带 `acpJobId` 或 `chatgptJobId`，前端随后用第 7 节的 jobs 接口跟踪。
 

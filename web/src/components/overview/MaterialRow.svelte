@@ -75,7 +75,7 @@
  }
  const pageState=(n:number)=>{const p=partial!.pages.find(x=>x.page===n),pending=partial!.pending?.find(x=>x.page===n);return p?(p.inspection?.status||p.status||'已完成'):'待完成：'+(pending?.parts||['识别']).join('、');};
  const elapsed=$derived(ai?.started?Math.max(0,Math.round(((ai.finished||Date.now())-ai.started)/1000)):0);
- const hasDetails=$derived(!!(ai||file.error||file.progress));
+ const hasDetails=$derived(!!(ai||file.error||file.progress||file.parseSource));
 </script>
 
 <svelte:window onclick={outside} onkeydown={e=>{if(e.key==='Escape')menuOpen=false;}}/>
@@ -115,7 +115,7 @@
      {#if file.externalAnalysis}<a role="menuitem" href={api.analysisUrl(project.id,file.id)}>解析 JSON</a>{/if}
      {#if !isPlainBb(file)}
       <div class="menu-sep" role="separator"></div><span class="menu-label">高级</span>
-      {#if isPdf(file)&&file.role!=='ppt'&&file.parsed}<button role="menuitem" disabled={running||locked} onclick={()=>act(()=>api.parsePdf(project.id,file.id),'已开始重新解析。')}>用 MinerU 重新解析</button>{/if}
+      {#if isPdf(file)&&file.role!=='ppt'&&file.parsed}<button role="menuitem" disabled={running||locked} onclick={()=>act(()=>api.parsePdf(project.id,file.id,'mineru'),'已交给 MinerU 重新解析。')}>用 MinerU 重新解析</button>{/if}
       {#if hasAi&&file.role!=='ppt'}<button role="menuitem" disabled={running||locked} onclick={()=>act(()=>api.aiParse(project.id,file.id),'AI 解析已开始。')}>{ai?'继续 / 补全 AI 解析':'AI 解析整份 PDF'}</button>{/if}
       <button role="menuitem" disabled={running||locked} onclick={()=>{menuOpen=false;importInput?.click();}}>{file.role==='ppt'?(file.parsed?'更换解析 JSON':'导入解析 JSON'):file.parsed?'更换解析结果':'导入补充解析'}</button>
       {#if ai&&(ai.completed||ai.drafted||ai.failed?.length)}<button role="menuitem" onclick={openPartial}>查看逐页结果</button>{/if}
@@ -140,6 +140,7 @@
  {#if hasDetails}
   <details class="details">
    <summary>详情</summary>
+   {#if file.parseSource}<p>文字来源：{file.parseSource==='text-layer'?'PDF 自带文字（未上传）':'MinerU 识别'}</p>{/if}
    {#if file.progress}<p>进度：{file.progress}</p>{/if}
    {#if file.error}<p class="error">{file.error}</p>{/if}
    {#if ai}
