@@ -5,6 +5,7 @@
  import Pending from './components/Pending.svelte';
  import ReadWorkspace from './components/read/ReadWorkspace.svelte';
  import ClassWorkspace from './components/class/ClassWorkspace.svelte';
+ import DeepDiveWorkspace from './components/deepdive/DeepDiveWorkspace.svelte';
  import SettingsPage from './components/settings/SettingsPage.svelte';
  import {store} from './lib/store.svelte';
  import {router,courseHref} from './lib/router.svelte';
@@ -45,7 +46,7 @@
   {#if store.connectionError}
    <p class="banner" role="alert">{store.connectionError}</p>
   {/if}
-  <main class="content" class:flush={route.page==='settings'||route.page==='course'&&(route.workspace==='read'||route.workspace==='class')}>
+  <main class="content" class:flush={route.page==='settings'||route.page==='course'&&(route.workspace==='read'||route.workspace==='class'||route.workspace==='deepdive')}>
    {#if route.page==='settings'}
     <SettingsPage/>
    {:else if route.page==='course'}
@@ -57,6 +58,8 @@
      <ReadWorkspace project={store.current} rest={route.rest}/>
     {:else if route.workspace==='class'}
      <ClassWorkspace project={store.current} rest={route.rest}/>
+    {:else if route.workspace==='deepdive'}
+     <DeepDiveWorkspace project={store.current} rest={route.rest}/>
     {:else}
      <Pending {...pending[route.workspace]}/>
     {/if}
