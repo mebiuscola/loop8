@@ -17,10 +17,15 @@
  // ---- Antigravity ----
  const job=new JobRun();
  let showPath=$state(false);
- async function signIn(kindOfRun:'login'|'inspect'){
+ // The backend signs in and lists models as two steps: "login" only authenticates
+ // (reusing a valid sign-in), "inspect" opens a session and reads the model list.
+ async function signIn(){
   try{
-   const result:any=await job.run(()=>api.modelTest(kindOfRun,model.accountProbe('acp')));
-   if(result?.models){model.setAccountModels('acp',result.models);job.state.message='已登录，读取到 '+result.models.length+' 个可用模型。现在可以在"模型分配"中选择它们。';}
+   await job.run(()=>api.modelTest('login',model.accountProbe('acp')));
+   const result:any=await job.run(()=>api.modelTest('inspect',model.accountProbe('acp')));
+   const models=Array.isArray(result?.models)?result.models:[];
+   model.setAccountModels('acp',models);
+   job.state.message=models.length?'已登录，读取到 '+models.length+' 个可用模型。现在可以在"模型分配"中选择它们。':'已登录，但 Antigravity 没有返回可用模型。请稍后点"刷新可用模型"重试。';
   }catch{/* shown by JobView */}
  }
  let confirmLogout=$state(false),logoutMessage=$state('');
@@ -75,7 +80,7 @@
    </label>
   {/if}
   <div class="actions">
-   <button class="btn btn-primary" type="button" disabled={job.state.running||!model.acpExecutable} onclick={()=>signIn('login')}>{available.length?'刷新可用模型':'登录并读取模型'}</button>
+   <button class="btn btn-primary" type="button" disabled={job.state.running||!model.acpExecutable} onclick={signIn}>{available.length?'刷新可用模型':'登录并读取模型'}</button>
    {#if inUse.length}
     {#if confirmLogout}
      <span class="confirm">退出后，所有 Antigravity 模型都需要重新登录才能使用。<button class="btn" type="button" onclick={logout}>确定退出</button><button class="btn btn-quiet" type="button" onclick={()=>confirmLogout=false}>取消</button></span>
