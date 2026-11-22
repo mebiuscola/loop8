@@ -2,7 +2,21 @@
 
 export type TaskStatus='running'|'complete'|'partial'|'error'|string;
 export interface Task{status:TaskStatus;stage?:string;error?:string;started?:string;finished?:string;warnings?:unknown[];}
-export interface SourceFile{id:string;name:string;sessionId?:string;role:'bb'|'ppt'|'reading'|'srt'|'audio'|string;parseStatus?:string;progress?:string;}
+/** Per-file AI parsing progress (lib/ai-material.mjs). Fields are optional: older projects lack some. */
+export interface AiParse{status?:string;stage?:string;error?:string;model?:string;started?:number;finished?:number;prepared?:number;completed?:number;total?:number;drafted?:number;
+ missing?:number[];failed?:number[];incomplete?:number;pendingParts?:{page:number;parts:string[]}[];
+ rounds?:{label:string;model?:string;success:number;total:number;status?:string}[];review?:{status?:string;completed?:number;total?:number;issues?:{batch?:number;error?:string}[]};}
+export interface SourceFile{id:string;name:string;sessionId?:string;role:'bb'|'ppt'|'reading'|'srt'|'audio'|string;parseStatus?:string;progress?:string;
+ size?:number;parsed?:boolean;error?:string;aiParse?:AiParse|null;externalAnalysis?:string;importSummary?:unknown;}
+export type Role='bb'|'ppt'|'reading';
+export interface MaterialDeletePlan{name:string;sharedOriginal?:boolean;}
+export interface SessionDeletePlan{title:string;subtitles:number;recordings:number;versions?:number;}
+export interface WeekDeletePlan{name:string;sessions:number;materials:number;subtitles:number;recordings:number;}
+export interface PartialResults{source:string;role:string;requiresComplete:boolean;total:number;completed:number;missing:number[];
+ review?:{status?:string;issues?:unknown[]}|null;reviewDiagnostics?:unknown[];
+ pages:{page:number;status?:string;inspection?:{status?:string};originalText?:{text:string}[];blocks?:{kind:string;text:string}[];learning?:{paragraphs?:{chinese:string}[];closeReading?:string};visualObservations?:{description:string}[];analysis?:string[];uncertainties?:string[]}[];
+ pending?:{page:number;parts:string[];draft?:{blocks:{original:string;chinese?:string}[];visuals:{description:string}[];explanation?:string;uncertainties:string[]}|null;diagnostic?:{stage:string;error:string;response:string}|null}[];
+ provenance?:({model?:string}|null)[];}
 export interface SessionAudio{fileId:string;srtId:string|null;srtHash:string|null;offsetMs:number;}
 export interface AnalysisMeta{generation?:string;generated?:string;materialRevision?:number;scriptGeneration?:string;outputRevision?:number;centralQuestion?:string;citationIssues?:unknown[];}
 export interface Session{id:string;type:'Lecture'|'Seminar'|'Other'|string;title:string;date?:string;revision:number;srtId?:string;generation?:string;generated?:string;materialRevision?:number;outputRevision?:number;analysis?:AnalysisMeta;artifactStatus?:{script?:string;deepDive?:string};analysisError?:string;audio?:SessionAudio;}
@@ -13,7 +27,9 @@ export interface ChatMessage{role:'user'|'assistant';text:string;scope:string;fo
 export interface ProjectSummary{id:string;name:string;status?:string;stage?:string;error?:string;tasks?:Record<string,Task>;}
 export interface SessionInput{id:string;revision:number;generation?:string|null;}
 export interface Weekly{generation?:string;generated?:string;materialRevision?:number;selectedSessionIds?:string[];availableSessionIds?:string[];knownSessionIds?:string[];sessionInputs?:SessionInput[];pendingSessionInputs?:SessionInput[];analysis?:AnalysisMeta;}
-export interface Project extends ProjectSummary{materialRevision?:number;weekly?:Weekly|null;files:SourceFile[];sessions:Session[];chat?:ChatMessage[];job?:{mode:string;sessionId?:string;sourceId?:string};}
+export interface Project extends ProjectSummary{materialRevision?:number;weekly?:Weekly|null;bbText?:string;
+ deletionPending?:{sessionId:string;summary?:SessionDeletePlan}|null;materialDeletionPending?:({sourceId:string}&Partial<MaterialDeletePlan>)|null;weekDeletionPending?:boolean;
+ lastUpload?:{kind:'reused'|'renamed'|'stored'|string;name:string;requestedName?:string};files:SourceFile[];sessions:Session[];chat?:ChatMessage[];job?:{mode:string;sessionId?:string;sourceId?:string};}
 export interface InteractiveJob{id:string;status:string;stage?:string;message?:string;}
 export interface ReaderParagraph{english:string;chinese:string;}
 export interface ReaderPage{sourceId:string;pageIndex:number;pageType?:string;paragraphs:ReaderParagraph[];closeReading:string;learningStale?:boolean;inspection?:{status?:string};}
@@ -86,6 +102,30 @@ export const api={
  audioBinding:(id:string,sessionId:string,change:{offsetMs:number}|{bindCurrent:true})=>post<Project>(project(id)+'/audio-binding',{sessionId,...change}),
  outputUrl:(id:string,name:string,scope:string)=>project(id)+'/output?name='+encodeURIComponent(name)+'&scope='+encodeURIComponent(scope)+'&download=1',
  sourceUrl:(id:string,sourceId:string)=>project(id)+'/source?id='+encodeURIComponent(sourceId),
+
+ // Overview: the week, its materials and classes (docs/API.md §1–3). Deletions are two-step: plan, then confirm.
+ weekRename:(id:string,name:string)=>post<Project>(project(id)+'/week-rename',{name}),
+ weekDeletePlan:(id:string)=>request<WeekDeletePlan>(project(id)+'/week-delete-plan'),
+ weekDelete:(id:string)=>post<unknown>(project(id)+'/week-delete',{confirm:true}),
+ saveBb:(id:string,text:string)=>post<Project>(project(id)+'/bb',{text}),
+ uploadMaterial:(id:string,file:File,role:Role)=>request<Project>(project(id)+'/upload',{method:'POST',headers:{'X-File-Name':encodeURIComponent(file.name),'X-File-Role':role},body:file}),
+ materialRole:(id:string,sourceId:string,role:Role)=>post<Project>(project(id)+'/material-role',{sourceId,role}),
+ materialDeletePlan:(id:string,sourceId:string)=>request<MaterialDeletePlan>(project(id)+'/material-delete-plan?source='+encodeURIComponent(sourceId)),
+ materialDelete:(id:string,sourceId:string)=>post<Project>(project(id)+'/material-delete',{sourceId,confirm:true}),
+ /** Imports an external parse: PPT skill JSON, or supplementary text / JSON for a PDF. */
+ importParsed:(id:string,sourceId:string,file:File)=>request<Project>(project(id)+'/parsed?source='+encodeURIComponent(sourceId),{method:'POST',headers:{'X-Parse-Format':/\.json$/i.test(file.name)?'json':'text'},body:file}),
+ analysisUrl:(id:string,sourceId:string)=>project(id)+'/analysis?source='+encodeURIComponent(sourceId),
+ pptSkillUrl:()=>'/api/ppt-skill',
+ /** MinerU parsing of a Reading / BB PDF. */
+ parsePdf:(id:string,sourceId:string)=>post<unknown>(project(id)+'/process',{mode:'reading',sourceId}),
+ aiParse:(id:string,sourceId:string,options:{fresh?:true;retryIssues?:true;retryFailed?:true;teachingPart?:'translation'|'explanation'}={})=>post<unknown>(project(id)+'/ai-parse',{sourceId,...options}),
+ aiPartial:(id:string,sourceId:string)=>request<PartialResults>(project(id)+'/ai-partial?source='+encodeURIComponent(sourceId)),
+ aiPartialImport:(id:string,sourceId:string)=>post<Project>(project(id)+'/ai-partial-import',{sourceId,confirm:true}),
+ aiCacheClear:(id:string,sourceId:string)=>post<unknown>(project(id)+'/ai-cache-clear',{sourceId}),
+ createSession:(id:string,type:string,title:string,date:string)=>post<{project:Project;session:Session}>(project(id)+'/sessions',{type,title,date}),
+ sessionRename:(id:string,sessionId:string,title:string)=>post<Project>(project(id)+'/session-rename',{sessionId,title}),
+ sessionDeletePlan:(id:string,sessionId:string)=>request<SessionDeletePlan>(project(id)+'/session-delete-plan?session='+encodeURIComponent(sessionId)),
+ sessionDelete:(id:string,sessionId:string)=>post<Project>(project(id)+'/session-delete',{sessionId,confirm:true}),
  ask:(id:string,question:string,scope:string,focus:unknown=null)=>post<AskResult>(project(id)+'/ask',{question,scope,focus}),
  cancelAiParse:(id:string,sourceId:string)=>post<unknown>(project(id)+'/ai-parse-cancel',{sourceId}),
  job:(kind:'acp'|'chatgpt',jobId:string)=>request<InteractiveJobView>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)),

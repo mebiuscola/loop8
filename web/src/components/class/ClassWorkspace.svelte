@@ -1,6 +1,5 @@
 <script lang="ts">
  import {untrack} from 'svelte';
- import Icon from '../Icon.svelte';
  import StatusBadge from '../StatusBadge.svelte';
  import ClassReader from './ClassReader.svelte';
  import {api,ApiError,type Project,type Session,type Transcript} from '../../lib/api';
@@ -120,8 +119,8 @@
  {#if !sessions.length}
   <div class="empty">
    <h2>本周还没有课堂记录</h2>
-   <p>在"概览"中添加一节课（Lecture / Seminar）后会出现在这里。概览迁移完成前，请在旧界面添加。</p>
-   <a class="btn btn-primary" href="/" target="_blank" rel="noopener">在旧界面添加课堂 <Icon name="external" size={14}/></a>
+   <p>在"概览"中添加一节课（Lecture / Seminar）后会出现在这里。</p>
+   <a class="btn btn-primary" href={courseHref(project.id,'overview')}>去概览添加课堂</a>
   </div>
  {:else if session&&status}
   <div class="toolbar">
@@ -147,8 +146,7 @@
        {#if session.generation}<a role="menuitem" href={api.outputUrl(project.id,'Class_Script_Bilingual.md',session.id)}>双语讲稿（Markdown）</a>{/if}
        {#if srt}<a role="menuitem" href={api.sourceUrl(project.id,srt.id)}>字幕原件</a>{/if}
        <div class="menu-sep" role="separator"></div>
-       <span class="menu-label">高级（暂在旧界面）</span>
-       <a role="menuitem" href="/" target="_blank" rel="noopener">重命名、删除这节课 <Icon name="external" size={12}/></a>
+       <a role="menuitem" href={courseHref(project.id,'overview')}>重命名、删除这节课（在概览中）</a>
       </div>
      {/if}
     </div>

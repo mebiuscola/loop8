@@ -33,7 +33,7 @@
     </li>
    {/each}
   </ul>
-  <p class="note">停止和继续任务目前仍在各工作区（旧界面）中操作。</p>
+  <p class="note">停止或继续：点"去看看"，在对应的材料、课堂或 Deep Dive 旁操作。</p>
  {:else}
   <p class="empty">没有正在运行或需要处理的任务。</p>
  {/if}
