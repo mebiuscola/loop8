@@ -4,6 +4,7 @@
  import AskPanel from './components/AskPanel.svelte';
  import Pending from './components/Pending.svelte';
  import ReadWorkspace from './components/read/ReadWorkspace.svelte';
+ import ClassWorkspace from './components/class/ClassWorkspace.svelte';
  import SettingsPage from './components/settings/SettingsPage.svelte';
  import {store} from './lib/store.svelte';
  import {router,courseHref} from './lib/router.svelte';
@@ -44,7 +45,7 @@
   {#if store.connectionError}
    <p class="banner" role="alert">{store.connectionError}</p>
   {/if}
-  <main class="content" class:flush={route.page==='settings'||route.page==='course'&&route.workspace==='read'}>
+  <main class="content" class:flush={route.page==='settings'||route.page==='course'&&(route.workspace==='read'||route.workspace==='class')}>
    {#if route.page==='settings'}
     <SettingsPage/>
    {:else if route.page==='course'}
@@ -54,6 +55,8 @@
      <p class="loading">正在打开课程…</p>
     {:else if route.workspace==='read'}
      <ReadWorkspace project={store.current} rest={route.rest}/>
+    {:else if route.workspace==='class'}
+     <ClassWorkspace project={store.current} rest={route.rest}/>
     {:else}
      <Pending {...pending[route.workspace]}/>
     {/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
  import Icon from './Icon.svelte';
+ import RichText from './RichText.svelte';
  import {api,ApiError,type Project,type ChatMessage} from '../lib/api';
  import {store} from '../lib/store.svelte';
  import {askContext} from '../lib/ask-context.svelte';
@@ -16,7 +17,8 @@
  // The reader offers "this page"; it is used until the user removes it, and comes back for another material.
  let useFocus=$state(true);
  const focus=$derived(useFocus?askContext.focus:null);
- $effect(()=>{askContext.focus?.focus.sourceId;useFocus=true;});
+ // A new material or class brings the chip back; turning pages within one material does not.
+ $effect(()=>{const f=askContext.focus;f?.scope;f?.focus?.sourceId;useFocus=true;});
  const activeScope=$derived(focus?focus.scope:scope);
  let question=$state(''),sending=$state(false),error=$state(''),progress=$state('');
  let list:HTMLElement;
@@ -70,7 +72,7 @@
   {#each history as m, i (m.at+m.role+i)}
    <article class="msg {m.role}" class:current={m.scope===activeScope}>
     <div class="meta">{m.role==='user'?'我':'AI 回答'} · <span class="scope">{scopeLabel(m)}</span></div>
-    <div class="text">{m.text}</div>
+    {#if m.role==='assistant'}<RichText text={m.text} {project}/>{:else}<div class="text">{m.text}</div>{/if}
    </article>
   {:else}
    <p class="empty">还没有提问。问题会根据所选范围内的材料、讲稿和分析来回答。</p>
