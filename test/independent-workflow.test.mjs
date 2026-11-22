@@ -5,8 +5,9 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,rm,readFile,mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {scriptState,analysisState,weeklyState} from '../public/workflow.js';
+import {scriptState,analysisState,weeklyState} from '../lib/workflow.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
+import {openApp,go,waitFor,waitText,click} from './helpers/app.mjs';
 import {pipeline} from '../lib/pipeline.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -56,18 +57,26 @@ test('actual UI and HTTP tasks keep scripts, per-session analysis and selected w
   state=await run({mode:'session',sessionId:seminar.id});assert(!state.weekly);assert.equal(state.sessions[0].artifactStatus.deepDive,'not_generated');
   const transcriptGeneration=state.sessions[0].generation,scriptFile=path.join(dir,'classes',p.id,'Output/Sessions',lecture.id,'Class_Script_Bilingual.md'),originalScript=await readFile(scriptFile,'utf8');
   let browser=true;try{await browserExecutable();}catch{browser=false;t.diagnostic('Browser unavailable; independent HTTP flow still checked.');}
-  const uiWait=async expression=>{for(let i=0;i<180;i++){try{if(await ui.evaluate(expression))return;}catch{}await sleep(40);}throw Error('UI timeout: '+expression);};
+  const until=async check=>{for(let i=0;i<300;i++){const value=await check();if(value)return value;await sleep(20);}throw Error('task timeout');};
   if(browser){
-   ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/',0);true");await uiWait("!!document.querySelector('#surface-analysis')&&!document.querySelector('#workspace').hidden");
-   assert.equal(await ui.evaluate("[...document.querySelectorAll('.workspace-nav > button')].map(b=>b.textContent).join('|')"),'本周材料|材料阅读|课堂讲稿|Deep Dive');
-   await ui.evaluate("document.querySelector('#surface-transcripts').click();true");await uiWait("document.querySelector('#process').textContent.includes('本节讲稿')");assert.equal(await ui.evaluate("document.querySelector('#view-week').hidden"),true);
-   await ui.evaluate("document.querySelector('#surface-analysis').click();true");await uiWait("!document.querySelector('#analysis-plan').hidden&&document.querySelector('#process').textContent.includes('整周')");
-   await ui.evaluate(`(()=>{const c=document.querySelector('[data-session-id="${seminar.id}"]');c.checked=false;c.dispatchEvent(new Event('change'));document.querySelector('#process').click();return true;})()`);await uiWait("document.querySelector('#process').textContent.includes('正在处理')");state=await wait();
+   ui=await launchRenderer(base,{});const course='/w/'+encodeURIComponent(p.id);
+   await openApp(ui,course+'/class/'+encodeURIComponent(lecture.id),{width:1500,height:1100});
+   assert.equal(await ui.evaluate("[...document.querySelectorAll('.topbar nav a')].map(a=>a.textContent.trim()).join('|')"),'概览|阅读|课堂|Deep Dive');
+   await waitText(ui,'LECTURE_ONLY','main');
+   assert.equal(await ui.evaluate("[...document.querySelectorAll('main .btn-primary')].filter(b=>/Deep Dive/.test(b.textContent)).length"),0,'the class page starts no Deep Dive');
+   // Weekly Deep Dive with only the lecture included.
+   await go(ui,'#'+course+'/deepdive/week');
+   await waitFor(ui,"[...document.querySelectorAll('main [aria-label=纳入的课堂] input')].length===2&&[...document.querySelectorAll('main [aria-label=纳入的课堂] input')].every(i=>!i.disabled)",{label:'both classes can be included'});
+   await ui.evaluate(`(()=>{const l=[...document.querySelectorAll('main [aria-label=纳入的课堂] label')].find(l=>l.textContent.includes(${JSON.stringify(seminar.title)}));const box=l.querySelector('input');if(box.checked)box.click();return true;})()`);
+   await click(ui,'生成整周 Deep Dive','main button');
+   state=await until(async()=>{const value=await api(route);return value.status!=='running'&&value.weekly?.generation&&value;});
   }else state=await run({mode:'week',sessionIds:[lecture.id]});
   assert.equal(state.status,'done',state.error);assert.deepEqual(state.weekly.selectedSessionIds,[lecture.id]);const weeklyGeneration=state.weekly.generation;
   const packet=seen.find(r=>r.system.includes('Weekly synthesis')).input;assert.equal(packet.sessions.length,1);assert.equal(packet.sessions[0].id,lecture.id);assert(!JSON.stringify(packet.sessions).includes('SEMINAR_ONLY'));assert.equal(packet.pendingSessions[0].id,seminar.id);
   if(browser){
-   await uiWait("!document.querySelector('#process').disabled");await ui.evaluate("document.querySelector('#view-preparation').click();true");await uiWait("document.querySelector('#process').textContent.includes('本节 Deep Dive')&&!document.querySelector('#process').disabled");await ui.evaluate("document.querySelector('#process').click();true");await uiWait("document.querySelector('#process').textContent.includes('正在处理')");state=await wait();
+   await go(ui,'#/w/'+encodeURIComponent(p.id)+'/deepdive/'+encodeURIComponent(lecture.id));
+   await click(ui,'生成本节 Deep Dive','main button');
+   state=await until(async()=>{const value=await api(route);return value.status!=='running'&&value.sessions.find(s=>s.id===lecture.id)?.analysis?.generation&&value;});
   }else state=await run({mode:'analysis',sessionId:lecture.id});
   assert.equal(state.status,'done',state.error);assert.equal(state.sessions[0].generation,transcriptGeneration);assert.equal(state.weekly.generation,weeklyGeneration);assert.equal(await readFile(scriptFile,'utf8'),originalScript);
   const singlePacket=seen.find(r=>r.system.includes('Deep Dive /')).input;assert(JSON.stringify(singlePacket).includes('LECTURE_ONLY'));assert(!JSON.stringify(singlePacket).includes('SEMINAR_ONLY'));
@@ -78,7 +87,7 @@ test('actual UI and HTTP tasks keep scripts, per-session analysis and selected w
   state=await run({mode:'analysis',sessionId:lecture.id});assert.equal(analysisState(state,state.sessions[0]).stale,false);assert.equal(state.weekly.generation,weeklyGeneration);
   const lastScript=state.sessions[0].generation;state=await run({mode:'week',sessionIds:[]});assert.deepEqual(state.weekly.selectedSessionIds,[]);assert.equal(state.sessions[0].generation,lastScript);assert.equal(weeklyState(state).stale,false,'explicit materials-only analysis is valid');
   assert.equal((await call(route+'/process',{mode:'week',sessionIds:['unknown']})).status,400);
-  if(browser&&process.env.CLASSROOM_WORKFLOW_EVIDENCE){await mkdir(process.env.CLASSROOM_WORKFLOW_EVIDENCE,{recursive:true});await ui.evaluate("document.querySelector('#surface-analysis').click();document.querySelector('#view-week').click();true");await uiWait("!document.querySelector('#process').disabled");await writeFile(path.join(process.env.CLASSROOM_WORKFLOW_EVIDENCE,'Independent-Deep-Dive.png'),await ui.screenshot(1500,1100));}
+  if(browser&&process.env.CLASSROOM_WORKFLOW_EVIDENCE){await mkdir(process.env.CLASSROOM_WORKFLOW_EVIDENCE,{recursive:true});await go(ui,'#/w/'+encodeURIComponent(p.id)+'/deepdive/week');await waitText(ui,'整周','main');await writeFile(path.join(process.env.CLASSROOM_WORKFLOW_EVIDENCE,'Independent-Deep-Dive.png'),await ui.screenshot(1500,1100));}
   const readingUpload=await fetch(base+route+'/upload',{method:'POST',headers:{'x-file-role':'reading','x-file-name':'Unparsed.pdf'},body:'Original PDF fixture'});assert.equal(readingUpload.status,201);const reading=(await readingUpload.json()).files.find(f=>f.role==='reading');
   await api('/api/settings',{clearApiKey:true,model:'',clearMineruToken:true});const callsBeforeMineru=seen.length;
   state=await run({mode:'reading',sourceId:reading.id});assert.equal(state.status,'error');assert.match(state.error,/MinerU.*Token/);assert.equal(state.files.find(f=>f.id===reading.id).parseStatus,'failed');assert.equal(seen.length,callsBeforeMineru,'explicit MinerU tasks never require or call an LLM');assert.equal(state.sessions[0].generation,lastScript);

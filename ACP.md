@@ -47,9 +47,9 @@
 - `lib/acp-client.mjs`：官方 TypeScript SDK、stdio 进程、个人认证、能力协商、模型切换、提示与图像、权限回调、取消。
 - `lib/acp-jobs.mjs`：内存任务句柄、按本次任务自动授权、手动停止和完成记录过期回收；不是持久任务队列。
 - `lib/model-routing.mjs` / `lib/adapters.mjs`：provider 分流与隔离；API 的原缓存身份保留。
-- `public/settings.js` / `public/settings.css`：分类设置、模型编辑、默认与功能分配；`public/acp.js` / `public/acp-workflow.js`：交互状态、权限状态与停止。
+- `web/src/components/settings/`（`AccountCard`、`AssignSection` 等）与 `web/src/lib/acp-account.svelte.ts`、`jobs.svelte.ts`：账号登录、模型分配、交互状态、权限请求与停止。
 - `lib/acp-interaction.mjs`：传递任务上下文、授权和取消信号；配合材料工作池调度后续请求。
-- `test/acp.test.mjs` / `test/acp-browser.test.mjs`：本地模拟官方 ACP 协议及真实浏览器测试，不需要 Google 账号。模拟通过不能替代真实账号、官方二进制、网络或额度的端到端验证。
+- `test/acp.test.mjs` / `test/acp-browser.test.mjs` / `test/acp-login-browser.test.mjs`：本地模拟官方 ACP 协议及真实浏览器测试，不需要 Google 账号。模拟通过不能替代真实账号、官方二进制、网络或额度的端到端验证。
 
 开发机安装 Node.js 22+ 后运行 `npm ci`，再运行 `npm test`。Windows 便携包已包含运行时和生产依赖，不需要普通用户安装 npm。
 

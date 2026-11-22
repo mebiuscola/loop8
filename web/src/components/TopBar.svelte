@@ -1,0 +1,72 @@
+<script lang="ts">
+ import Icon from './Icon.svelte';
+ import TaskPanel from './TaskPanel.svelte';
+ import {store} from '../lib/store.svelte';
+ import {router,workspaces} from '../lib/router.svelte';
+
+ let {askOpen=$bindable(false),askAvailable=false}:{askOpen?:boolean;askAvailable?:boolean}=$props();
+ let tasksOpen=$state(false);
+ let wrap:HTMLElement;
+
+ const route=$derived(router.route);
+ const title=$derived(route.page==='course'?(store.current?.name||store.projects.find(p=>p.id===route.courseId)?.name||''):route.page==='settings'?'设置':'');
+ const running=$derived(store.tasks.filter(t=>t.kind==='running').length);
+ const attention=$derived(store.tasks.filter(t=>t.kind==='failed'||t.kind==='stopped').length);
+
+ function outside(event:MouseEvent){if(tasksOpen&&wrap&&!wrap.contains(event.target as Node))tasksOpen=false;}
+ function key(event:KeyboardEvent){if(event.key==='Escape')tasksOpen=false;}
+</script>
+
+<svelte:window onclick={outside} onkeydown={key}/>
+
+<header class="topbar">
+ <div class="title" title={title}>{title}</div>
+
+ {#if route.page==='course'}
+  <nav class="tabs" aria-label="工作区">
+   {#each workspaces as w (w.id)}
+    <a href={router.placeHref(route.courseId,w.id)} class:active={route.workspace===w.id} aria-current={route.workspace===w.id?'page':undefined}>{w.label}</a>
+   {/each}
+  </nav>
+ {/if}
+
+ <div class="actions">
+  <div class="tasks" bind:this={wrap}>
+   <button class="btn btn-quiet" class:busy={running} onclick={()=>tasksOpen=!tasksOpen} aria-expanded={tasksOpen} aria-haspopup="dialog" title="后台任务">
+    <Icon name="tasks" size={16}/>
+    {#if running}<span class="long">{running} 个任务进行中</span><span class="count">{running}</span>
+    {:else if attention}<span class="warn long">{attention} 个任务待处理</span><span class="warn count">{attention}</span>
+    {:else}<span class="visually-hidden">后台任务</span>{/if}
+   </button>
+   {#if tasksOpen}<TaskPanel onclose={()=>tasksOpen=false}/>{/if}
+  </div>
+  {#if askAvailable}
+   <button class="btn" class:btn-primary={askOpen} onclick={()=>askOpen=!askOpen} aria-pressed={askOpen} title="提问"><Icon name="ask" size={16}/><span class="ask-label">提问</span></button>
+  {/if}
+ </div>
+</header>
+
+<style>
+ .topbar{display:flex;align-items:center;gap:var(--space-4);height:var(--topbar-height);padding:0 var(--space-4);background:var(--bg-surface);border-bottom:1px solid var(--line);}
+ .title{flex:0 1 auto;min-width:4em;font-size:var(--text-lg);font-weight:var(--weight-bold);max-width:28ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+ .tabs{flex:none;display:flex;gap:var(--space-1);height:100%;}
+ .tabs a{display:flex;align-items:center;padding:0 var(--space-3);color:var(--fg-muted);text-decoration:none;font-size:var(--text-sm);border-bottom:2px solid transparent;white-space:nowrap;}
+ .actions{flex:none;}
+ /* Narrow windows: the task button keeps its icon and count only. */
+ .count{display:none;}
+ @media (max-width:1100px){.long{display:none;}.count{display:inline;}}
+ .tabs a:hover{color:var(--fg);}
+ .tabs a.active{color:var(--accent-strong);border-bottom-color:var(--accent);font-weight:var(--weight-medium);}
+ .actions{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);}
+ .tasks{position:relative;}
+ .busy{color:var(--status-running-fg);}
+ .warn{color:var(--status-stopped-fg);}
+ /* Phone width: the course name is in the course list; tabs and buttons tighten to fit. */
+ @media (max-width:600px){
+  .topbar{gap:var(--space-2);padding:0 var(--space-2);}
+  .title{display:none;}
+  .tabs{gap:0;}
+  .tabs a{padding:0 var(--space-2);}
+  .ask-label{display:none;}
+ }
+</style>

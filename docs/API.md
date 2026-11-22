@@ -10,12 +10,22 @@
 - 错误统一返回 `{ "error": "中文说明" }`，HTTP 状态非 2xx。前端直接把 `error` 显示给用户。
 - `409`：材料或结果正在提交（存在 `.output-transaction.json` 或材料提交日志）。提示用户稍后重试或重启。
 - 长任务返回 `202` 和一个任务对象，之后用对应的 `jobs` 接口轮询或取消。
-- 进度：旧前端每隔几秒 `GET /api/projects/:id`，读取 `status`、`stage`、`files[].progress`、`tasks`。目前没有 SSE 或 WebSocket。
+- 进度：前端每隔几秒 `GET /api/projects/:id`，读取 `status`、`stage`、`files[].progress`、`tasks`。目前没有 SSE 或 WebSocket。
 - 凭据永不返回：设置接口会去掉 `apiKey`、`mineruToken` 等，只返回 `hasXxx` 布尔值。
 
 记号：`:id` 是每周课程的 id（如 `Week_DebateW4_95c62a5a`），需要 `encodeURIComponent`。
 
 ---
+
+## 0. 前端页面
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/` | 新前端页面（`public/next/index.html`） |
+| GET | `/next`、`/next/`、`/next/index.html` | `302` 跳到 `/`（地址栏中的 `#/…` 保留） |
+| GET | `/legacy`、`/legacy/` | `302` 跳到 `/`（旧前端已在 v2.26.0 删除） |
+| GET | `/parse-render.*`、`/render-audit.js`、`/pptx-frame.*`、`/reading-reference.js`、`/reading-reference.css` | 独立页面：原页渲染、实时 PPTX 预览、引文原文对照 |
+| GET | `/next/…` | 新前端构建产物，来自 `public/next/`。`index.html` 不缓存，其余带哈希的资源长期缓存；CSP 不允许内联脚本。未构建时返回 `404 {error:"新界面尚未构建。"}`；越出目录的路径返回 `400` |
 
 ## 1. 每周课程（项目）
 
@@ -102,6 +112,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | GET | `/api/projects/:id/preview-file?source=` | 预览 PDF |
 | POST | `/api/projects/:id/preview-pdf?source=` | 关联用户导出的 PDF（原始字节，≤150MB） |
 | POST | `/api/projects/:id/preview-clear?source=` | 清理预览 |
+| POST | `/api/projects/:id/ppt-page-preview` | 单页 PPT 试解析（用"单页 PPT 试解析"分配的模型，需图片输入）。体：`{sourceId, pageIndex}`（0 起）。返回 `202 {id, transport}`，`transport` 为 `acp` / `chatgpt` / `preview`，用第 7 节对应的 jobs 接口跟踪；结果 `result` 为 `{page:{paragraphs[{english,chinese}],closeReading}, warnings[]}`，只用于查看，不写入课程 |
 | GET | `/api/projects/:id/preview-source?source=` | PPTX 原件字节（浏览器内渲染用） |
 | GET | `/api/projects/:id/preview-fonts?source=` | PPTX 所需字体的本地匹配情况 |
 | GET | `/api/preview-font/:name` | 字体文件 |
@@ -144,7 +155,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 |---|---|---|
 | GET | `/api/settings` | 旧版设置读取（脱敏）。当前前端未调用 |
 | POST | `/api/settings` | 旧版整体保存。当前前端未调用 |
-| GET | `/api/settings/editor` | 新设置编辑器数据（脱敏，含 `acpPaths`、`modelProfiles`） |
+| GET | `/api/settings/editor` | 新设置编辑器数据（脱敏，含 `acpPaths`、`modelProfiles`）。`acpBundled`：随包分发的 `agy-acp-server\agy_acp_server.exe` 的绝对路径，文件不存在时为空字符串；只读，不写入设置 |
 | POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`）、`models`、`routes`、`mineru`、`preview`、`advanced` |
 | POST | `/api/settings/model-test` | 测试某个模型连接。体：`{kind, profile}`，kind ∈ `ai/text/json/vision/inspect/login`。返回 `202` 任务 |
 | POST | `/api/settings/test` | 测试 MinerU、视觉模型等。体：`{kind, settings?, task?}` |

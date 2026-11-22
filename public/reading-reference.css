@@ -13,3 +13,14 @@ a{color:#285e56}
 .pdf-tools button,.pdf-tools input{background:#e8ebe1;border-color:#c7cfc3;border-radius:8px;color:#222e2b;font:inherit}
 .pdf-scroll{background:#e6e9df;border-radius:10px}
 :is(button,a,summary,input):focus-visible{outline:2px solid #28665f;outline-offset:3px}
+
+/* PDF page-turn bar (formerly in the old interface folio.css). */
+.pdf-tools{display: inline-grid;grid-template-columns: 28px 40px 12px 40px 28px;align-items: center;gap: 2px;box-sizing: border-box;min-height: 34px;padding: 2px;border: 1px solid #d7d9cf;border-radius: 9px;background: transparent;color: #29312d;font: 400 14px/28px "Segoe UI","Microsoft YaHei",sans-serif;font-variant-numeric: tabular-nums;white-space: nowrap;}
+.pdf-tools button{display: grid;place-items: center;box-sizing: border-box;width: 28px;height: 28px;padding: 0;border: 0;border-radius: 6px;background: transparent;color: inherit;font: inherit;}
+.pdf-tools svg{display: block;width: 16px;height: 16px;fill: none;stroke: currentColor;stroke-width: 1.65;stroke-linecap: round;stroke-linejoin: round; }
+.pdf-tools button:hover:not(:disabled){background: #fefdf7; }
+.pdf-tools button:disabled{opacity: .4; }
+.pdf-tools input{box-sizing: border-box;width: 40px;min-width: 40px;height: 28px;padding: 0;margin: 0;border: 0;border-radius: 4px;background: transparent;color: inherit;text-align: center;font: inherit;font-variant-numeric: tabular-nums;appearance: textfield;}
+.pdf-tools input::-webkit-inner-spin-button,.pdf-tools input::-webkit-outer-spin-button{appearance: none;margin: 0; }
+.pdf-tools>span{display: block;box-sizing: border-box;min-width: 0;height: 28px;padding: 0;margin: 0;text-align: center;font: inherit;font-variant-numeric: tabular-nums;}
+.pdf-tools input:focus-visible{outline: 2px solid #28665f;outline-offset: 1px; }
