@@ -16,7 +16,7 @@ test('Google sign-in link survives panel remounts, repeated clicks do not restar
  try{
   const base=await until(()=>log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0]);const post=async(url,b)=>{const r=await fetch(base+url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});assert(r.ok,await r.clone().text());return r.json();};
   await post('/api/settings',{modelProfiles:[{id:'login-test',provider:'antigravity-acp',name:'Google 登录',model:'',acpEntry:'standalone',acpExecutable:exe}],modelRoutes:{}});
-  ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/',0);true");await until(()=>ui.evaluate("!!document.querySelector('.settings-menu')"));await ui.evaluate("document.querySelector('#settings-open').click();true");await until(()=>ui.evaluate("!!document.querySelector('[data-profile=login-test]')"));
+  ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");await until(()=>ui.evaluate("!!document.querySelector('.settings-menu')"));await ui.evaluate("document.querySelector('#settings-open').click();true");await until(()=>ui.evaluate("!!document.querySelector('[data-profile=login-test]')"));
   assert(await ui.evaluate("[...document.querySelectorAll('.settings-test-actions button')].some(b=>b.textContent==='退出登录')"));
   assert.equal(await ui.evaluate("(async()=>{const r=await fetch('/api/settings/acp-logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});return r.status;})()"),400);
   await ui.evaluate("window.confirm=()=>true;[...document.querySelectorAll('.settings-test-actions button')].find(b=>b.textContent==='退出登录').click();true");

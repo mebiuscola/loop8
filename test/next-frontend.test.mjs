@@ -7,7 +7,7 @@ import os from 'node:os';
 
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 
-test('new frontend is served under /next with a strict CSP and no path traversal',async()=>{
+test('new frontend is served at / with a strict CSP, the old one at /legacy/, and no path traversal',async()=>{
  const temp=await mkdtemp(path.join(os.tmpdir(),'classroom-next-'));
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:temp,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});
  let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
@@ -16,12 +16,15 @@ test('new frontend is served under /next with a strict CSP and no path traversal
   const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);
   const get=url=>fetch(base+url,{redirect:'manual'});
 
-  const redirect=await get('/next');
-  assert.equal(redirect.status,302);
-  assert.equal(redirect.headers.get('location'),'/next/');
+  // The redesign-era address leads to the new home page.
+  for(const old of ['/next','/next/','/next/index.html']){
+   const redirect=await get(old);
+   assert.equal(redirect.status,302,old);
+   assert.equal(redirect.headers.get('location'),'/',old);
+  }
 
   const built=await access(new URL('../public/next/index.html',import.meta.url)).then(()=>true,()=>false);
-  const index=await get('/next/');
+  const index=await get('/');
   if(built){
    assert.equal(index.status,200);
    assert.match(index.headers.get('content-type'),/text\/html/);
@@ -41,8 +44,13 @@ test('new frontend is served under /next with a strict CSP and no path traversal
    assert.doesNotMatch(await r.text(),/createServer|"version"/);
   }
 
-  // The old frontend stays where it was.
-  assert.equal((await get('/')).status,200);
+  // The old frontend stays reachable at /legacy/ until it is removed.
+  const legacy=await get('/legacy');
+  assert.equal(legacy.status,302);
+  assert.equal(legacy.headers.get('location'),'/legacy/');
+  const legacyPage=await get('/legacy/');
+  assert.equal(legacyPage.status,200);
+  assert.match(await legacyPage.text(),/src="\/app\.js"/);
  }finally{
   child.kill();await pause(100);await rm(temp,{recursive:true,force:true});
  }

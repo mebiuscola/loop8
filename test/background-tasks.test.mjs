@@ -65,7 +65,7 @@ test('MinerU and Ask overlap, keep independent state and preserve navigation and
   let pending;
   if(browser){
    ui=await launchRenderer(base,{});
-   await ui.evaluate(`localStorage.setItem('classroom-project',${JSON.stringify(first.id)});setTimeout(()=>location.href='/',0);true`);
+   await ui.evaluate(`localStorage.setItem('classroom-project',${JSON.stringify(first.id)});setTimeout(()=>location.href='/legacy/',0);true`);
    await until(()=>ui.evaluate("document.querySelector('#title')?.textContent==='Background A'"));
    await ui.evaluate("document.querySelector('#qa-launch').click();document.querySelector('#question').value='My original question';document.querySelector('#ask-form').requestSubmit();true");
   }else pending=api(route+'/ask',{question:'My original question'});

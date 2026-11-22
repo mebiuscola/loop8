@@ -124,7 +124,7 @@ test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolat
  assert.deepEqual((await request(route)).files,upload.files);
  const ui=await launchRenderer(base,{});
  t.after(()=>ui.close());
- await ui.evaluate("setTimeout(()=>location.href='/',0);true");
+ await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");
  async function waitFor(expression){
   for(let i=0;i<200;i++){
    try{if(await ui.evaluate(expression))return;}catch{}

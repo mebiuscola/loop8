@@ -10,7 +10,7 @@
 - 错误统一返回 `{ "error": "中文说明" }`，HTTP 状态非 2xx。前端直接把 `error` 显示给用户。
 - `409`：材料或结果正在提交（存在 `.output-transaction.json` 或材料提交日志）。提示用户稍后重试或重启。
 - 长任务返回 `202` 和一个任务对象，之后用对应的 `jobs` 接口轮询或取消。
-- 进度：旧前端每隔几秒 `GET /api/projects/:id`，读取 `status`、`stage`、`files[].progress`、`tasks`。目前没有 SSE 或 WebSocket。
+- 进度：前端每隔几秒 `GET /api/projects/:id`，读取 `status`、`stage`、`files[].progress`、`tasks`。目前没有 SSE 或 WebSocket。
 - 凭据永不返回：设置接口会去掉 `apiKey`、`mineruToken` 等，只返回 `hasXxx` 布尔值。
 
 记号：`:id` 是每周课程的 id（如 `Week_DebateW4_95c62a5a`），需要 `encodeURIComponent`。
@@ -21,8 +21,10 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/` 及旧前端静态文件 | 旧前端（迁移完成前保持不变） |
-| GET | `/next` | `302` 跳到 `/next/` |
+| GET | `/` | 新前端页面（`public/next/index.html`） |
+| GET | `/next`、`/next/`、`/next/index.html` | `302` 跳到 `/`（地址栏中的 `#/…` 保留） |
+| GET | `/legacy` | `302` 跳到 `/legacy/` |
+| GET | `/legacy/` 及旧前端静态文件 | 旧前端，暂留到旧界面浏览器测试改写完成后删除 |
 | GET | `/next/…` | 新前端构建产物，来自 `public/next/`。`index.html` 不缓存，其余带哈希的资源长期缓存；CSP 不允许内联脚本。未构建时返回 `404 {error:"新界面尚未构建。"}`；越出目录的路径返回 `400` |
 
 ## 1. 每周课程（项目）

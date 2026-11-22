@@ -25,7 +25,7 @@ test('section saves are independent, default includes ACP, model tests preserve 
   await api('/api/settings/editor',{section:'model',profile:cli,acpPaths:{cli:cliPath,standalone:acp.acpExecutable}});
   state=await api('/api/settings/editor');assert.deepEqual(state.acpPaths,{cli:cliPath,standalone:acp.acpExecutable});
   let browser=true;try{await browserExecutable();}catch{browser=false;t.diagnostic('Browser unavailable; settings HTTP checks completed.');}
-  if(browser){ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/',0);true");await until(()=>ui.evaluate("!!document.querySelector('.settings-menu')"));await ui.evaluate("document.querySelector('#settings-open').click();true");await until(()=>ui.evaluate("document.querySelector('#settings').open"));
+  if(browser){ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");await until(()=>ui.evaluate("!!document.querySelector('.settings-menu')"));await ui.evaluate("document.querySelector('#settings-open').click();true");await until(()=>ui.evaluate("document.querySelector('#settings').open"));
    assert.equal(await ui.evaluate("document.querySelector('#default-model').value"),acp.id);assert.equal(await ui.evaluate("document.querySelector('#default-model option[value=another-acp]').disabled"),false);
    const switchEntry=entry=>ui.evaluate(`(()=>{const input=document.querySelector('[data-field=acpEntry]');input.value='${entry}';input.dispatchEvent(new Event('input'));input.dispatchEvent(new Event('change'));return document.querySelector('[data-field=acpExecutable]').value;})()`);
    assert.equal(await switchEntry('cli'),cliPath);

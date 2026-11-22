@@ -71,7 +71,7 @@ test('local workflow: parse recovery, immutable originals, complete outputs, QA,
     assert.fail('Browser did not reach '+expression);
    };
    try{
-    await ui.evaluate("setTimeout(()=>location.href='/',0);true");
+    await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");
     await waitFor("document.querySelector('#workspace')?.hidden===false");
     await ui.evaluate("window.beforeReload=true;setTimeout(()=>location.reload(),0);true");
     await waitFor("!window.beforeReload&&document.querySelector('#workspace')?.hidden===false");

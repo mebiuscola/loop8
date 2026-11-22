@@ -47,7 +47,7 @@ test('real isolated browser renders PPTX and PDF, sends page images, imports val
   const before=calls;await api(url+'/ai-parse',{sourceId:partial.id});await waitFile(partial.id);assert.equal(calls,before,'continue does not reset exhausted submissions');
   const ui=await launchRenderer(base,{});
   try{
-   await ui.evaluate("setTimeout(()=>location.href='/',0);true");
+   await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");
    let ready=false;for(let i=0;i<100;i++){try{if(await ui.evaluate("document.querySelectorAll('.parse-action').length===4")){ready=true;break;}}catch{}await sleep(50);}assert(ready,'real UI renders parsing actions');
    assert.match(await ui.evaluate("document.querySelector('.parse-progress').innerText"),/AI 完成 6\/6/);
    const imagePath=path.join(temp,'classes',p.id,'.Cache','Pages',p.files[0].id,'page-1.png'),imageBefore=await readFile(imagePath),seedPath=imagePath.replace('.png','.json'),seedBefore=await readFile(seedPath,'utf8');

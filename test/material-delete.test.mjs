@@ -62,7 +62,7 @@ test('desktop sidebar scrolls independently and the material menu confirms delet
   const uploaded=await api(route+'/upload',{method:'POST',headers:{'x-file-role':'bb','x-file-name':'BB%20example.md'},body:'Test material'});
   const file=uploaded.files.at(-1);
   browser=await launchRenderer(base,{});
-  await browser.evaluate("setTimeout(()=>location.href='/',0);true");
+  await browser.evaluate("setTimeout(()=>location.href='/legacy/',0);true");
   await until(()=>browser.evaluate("!!document.querySelector('#files .item-trigger')"));
   await browser.evaluate("if(document.body.classList.contains('sidebar-collapsed'))document.querySelector('#sidebar-toggle').click();true");
   await browser.screenshot(1280,720);

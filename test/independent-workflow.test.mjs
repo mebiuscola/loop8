@@ -58,7 +58,7 @@ test('actual UI and HTTP tasks keep scripts, per-session analysis and selected w
   let browser=true;try{await browserExecutable();}catch{browser=false;t.diagnostic('Browser unavailable; independent HTTP flow still checked.');}
   const uiWait=async expression=>{for(let i=0;i<180;i++){try{if(await ui.evaluate(expression))return;}catch{}await sleep(40);}throw Error('UI timeout: '+expression);};
   if(browser){
-   ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/',0);true");await uiWait("!!document.querySelector('#surface-analysis')&&!document.querySelector('#workspace').hidden");
+   ui=await launchRenderer(base,{});await ui.evaluate("setTimeout(()=>location.href='/legacy/',0);true");await uiWait("!!document.querySelector('#surface-analysis')&&!document.querySelector('#workspace').hidden");
    assert.equal(await ui.evaluate("[...document.querySelectorAll('.workspace-nav > button')].map(b=>b.textContent).join('|')"),'本周材料|材料阅读|课堂讲稿|Deep Dive');
    await ui.evaluate("document.querySelector('#surface-transcripts').click();true");await uiWait("document.querySelector('#process').textContent.includes('本节讲稿')");assert.equal(await ui.evaluate("document.querySelector('#view-week').hidden"),true);
    await ui.evaluate("document.querySelector('#surface-analysis').click();true");await uiWait("!document.querySelector('#analysis-plan').hidden&&document.querySelector('#process').textContent.includes('整周')");
