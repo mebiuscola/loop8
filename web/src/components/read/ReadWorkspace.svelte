@@ -23,9 +23,11 @@
 
  type Kind='ppt'|'ref';
  // rest = "<ppt|ref>/<sourceId>/p/<page>"
+ // Without a kind in the address, open courseware, or the references when the week has none.
  const parsed=$derived.by(()=>{
   const [kind,sourceId,,page]=rest.split('/');
-  return {kind:(kind==='ref'?'ref':'ppt') as Kind,sourceId:sourceId||'',page:Math.max(1,Number(page)||1)};
+  const fallback:Kind=project.files.some(f=>f.role==='ppt')||!project.files.some(f=>f.role==='reading')?'ppt':'ref';
+  return {kind:(kind==='ref'||kind==='ppt'?kind:fallback) as Kind,sourceId:sourceId||'',page:Math.max(1,Number(page)||1)};
  });
  const files=$derived({ppt:project.files.filter(f=>f.role==='ppt'),ref:project.files.filter(f=>f.role==='reading')});
  const kind=$derived(parsed.kind);
@@ -78,6 +80,8 @@
  let jump=$state<{page:number;seq:number}>({page:1,seq:0});
  $effect(()=>{const p=parsed.page;page=p;jump={page:p,seq:++seq};});
  const total=$derived(current?(kind==='ppt'?Math.max((current as CR).pages.length,(current as CR).nativePageCount||0,preview?.status?.pages||0):pageCount):0);
+ // The printed page number of the reference page in view, next to the PDF page number.
+ const printed=$derived(kind==='ref'&&current?(current as RR).paragraphs.find(p=>p.pageIndex===page-1&&p.printedPage)?.printedPage||'':'');
  function onPage(n:number){
   page=n;
   if(file)router.remember(href(kind,file.id,n));
@@ -144,6 +148,7 @@
     <button class="btn btn-quiet icon" onclick={()=>goPage(page-1)} disabled={page<=1} title="上一页"><Icon name="chevron-left" size={16}/></button>
     <input aria-label="页码" type="number" min="1" max={total||1} value={page} onchange={e=>goPage(Number((e.currentTarget as HTMLInputElement).value))}/>
     <span>/ {total||'–'}</span>
+    {#if printed}<span class="printed" title="书上印的页码">印刷页 {printed}</span>{/if}
     <button class="btn btn-quiet icon" onclick={()=>goPage(page+1)} disabled={!total||page>=total} title="下一页"><Icon name="chevron-right" size={16}/></button>
    </div>
    <fieldset class="cols" aria-label="显示">
@@ -233,6 +238,7 @@
  .segmented a.on{background:var(--bg-raised);color:var(--fg);font-weight:var(--weight-medium);}
  select{min-width:0;max-width:360px;height:32px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);font-size:var(--text-sm);}
  .pager{display:flex;align-items:center;gap:var(--space-1);font-size:var(--text-sm);color:var(--fg-muted);}
+ .printed{margin-left:var(--space-1);white-space:nowrap;}
  .pager input{width:52px;height:28px;text-align:center;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);}
  .icon{width:32px;padding:0;justify-content:center;}
  .cols{display:flex;gap:var(--space-3);margin:0;padding:0;border:0;font-size:var(--text-sm);color:var(--fg-muted);}

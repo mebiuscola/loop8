@@ -2,7 +2,6 @@
  import Icon from './Icon.svelte';
  import {store} from '../lib/store.svelte';
  import {router,courseHref} from '../lib/router.svelte';
- import {courseStatus} from '../lib/status';
  import {api,ApiError} from '../lib/api';
 
  let {collapsed=$bindable(false)}:{collapsed?:boolean}=$props();
@@ -38,7 +37,7 @@
   <div class="section-label">每周课程</div>
   <ul class="courses">
    {#each store.projects as p (p.id)}
-    {@const state=courseStatus(p)}
+    {@const state=store.courseState(p)}
     <li>
      <a href={courseHref(p.id)} class:active={p.id===activeId} aria-current={p.id===activeId?'page':undefined} title={p.name}>
       <span class="dot {state}" title={dotText[state]}><span class="visually-hidden">{dotText[state]}</span></span>
@@ -66,7 +65,7 @@
  {:else}
   <ul class="courses mini">
    {#each store.projects as p (p.id)}
-    {@const state=courseStatus(p)}
+    {@const state=store.courseState(p)}
     <li><a href={courseHref(p.id)} class:active={p.id===activeId} title={p.name+' · '+dotText[state]}><span class="dot {state}"></span><span class="initial">{abbrev(p.name)}</span></a></li>
    {/each}
   </ul>

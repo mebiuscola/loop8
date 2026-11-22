@@ -132,7 +132,8 @@
    <ul class="have" aria-label="本节材料">
     <li class:yes={!!srt} title={srt?.name||'还没有字幕'}>字幕 {srt?'✓':'–'}</li>
     <li class:yes={!!recording} title={recording?.name||'还没有录音（可选）'}>录音 {recording?'✓':'–'}</li>
-    <li class:yes={!!session.generation} title={session.generation?'已生成':'未生成'}>讲稿 {session.generation?'✓':'–'}</li>
+    {#if session.generation&&status?.kind==='stale'}<li class="stale" title="字幕或材料有变化，建议更新讲稿">讲稿待更新</li>
+    {:else}<li class:yes={!!session.generation} title={session.generation?'已生成':'未生成'}>讲稿 {session.generation?'✓':'–'}</li>{/if}
    </ul>
    <a class="link" href={courseHref(project.id,'deepdive',encodeURIComponent(session.id))}>查看本节 Deep Dive</a>
    <div class="end">
@@ -202,6 +203,7 @@
  .have{display:flex;gap:var(--space-2);margin:0;padding:0;list-style:none;font-size:var(--text-xs);}
  .have li{padding:2px var(--space-2);border-radius:999px;background:var(--status-idle-bg);color:var(--status-idle-fg);}
  .have li.yes{background:var(--status-done-bg);color:var(--status-done-fg);}
+ .have li.stale{background:var(--status-stale-bg);color:var(--status-stale-fg);}
  .link{font-size:var(--text-sm);color:var(--accent);}
  .end{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);}
  .icon{width:32px;padding:0;justify-content:center;}
