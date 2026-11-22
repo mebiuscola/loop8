@@ -16,7 +16,8 @@
  // The reader offers "this page"; it is used until the user removes it, and comes back for another material.
  let useFocus=$state(true);
  const focus=$derived(useFocus?askContext.focus:null);
- $effect(()=>{askContext.focus?.focus.sourceId;useFocus=true;});
+ // A new material or class brings the chip back; turning pages within one material does not.
+ $effect(()=>{const f=askContext.focus;f?.scope;f?.focus?.sourceId;useFocus=true;});
  const activeScope=$derived(focus?focus.scope:scope);
  let question=$state(''),sending=$state(false),error=$state(''),progress=$state('');
  let list:HTMLElement;

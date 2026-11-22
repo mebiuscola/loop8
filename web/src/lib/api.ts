@@ -2,11 +2,15 @@
 
 export type TaskStatus='running'|'complete'|'partial'|'error'|string;
 export interface Task{status:TaskStatus;stage?:string;error?:string;started?:string;finished?:string;warnings?:unknown[];}
-export interface SourceFile{id:string;name:string;role:'bb'|'ppt'|'reading'|'srt'|'audio'|string;parseStatus?:string;progress?:string;}
-export interface Session{id:string;type:string;title:string;}
+export interface SourceFile{id:string;name:string;sessionId?:string;role:'bb'|'ppt'|'reading'|'srt'|'audio'|string;parseStatus?:string;progress?:string;}
+export interface SessionAudio{fileId:string;srtId:string|null;srtHash:string|null;offsetMs:number;}
+export interface Session{id:string;type:'Lecture'|'Seminar'|'Other'|string;title:string;date?:string;revision:number;srtId?:string;generation?:string;materialRevision?:number;outputRevision?:number;audio?:SessionAudio;}
+export interface TranscriptParagraph{id:string;chapter:string;speaker:'Lecturer'|'Student'|'Unclear speaker';startMs:number;endMs:number;cueIds:number[];english:string;chinese:string;corrections:string[];}
+export interface TranscriptAudio extends SessionAudio{name:string;url:string;matched:boolean;}
+export type Transcript={available:false;message:string}|{available:true;sessionId:string;srtId:string;paragraphs:TranscriptParagraph[];contentAudit?:{segmentIndex:number;issues:string[]}[];legacy:boolean;audio:TranscriptAudio|null};
 export interface ChatMessage{role:'user'|'assistant';text:string;scope:string;focus:unknown;contextLabel?:string;at:string;requestId?:string;}
 export interface ProjectSummary{id:string;name:string;status?:string;stage?:string;error?:string;tasks?:Record<string,Task>;}
-export interface Project extends ProjectSummary{files:SourceFile[];sessions:Session[];chat?:ChatMessage[];job?:{mode:string;sessionId?:string;sourceId?:string};}
+export interface Project extends ProjectSummary{materialRevision?:number;files:SourceFile[];sessions:Session[];chat?:ChatMessage[];job?:{mode:string;sessionId?:string;sourceId?:string};}
 export interface InteractiveJob{id:string;status:string;stage?:string;message?:string;}
 export interface ReaderParagraph{english:string;chinese:string;}
 export interface ReaderPage{sourceId:string;pageIndex:number;pageType?:string;paragraphs:ReaderParagraph[];closeReading:string;learningStale?:boolean;inspection?:{status?:string};}
@@ -23,7 +27,7 @@ export type SettingsSave={section:'model';profile:ModelProfile;acpPaths?:Record<
 export interface TestJob{id:string;status:string;stage?:string;message?:string;transport?:'acp'|'chatgpt'|'api';}
 export interface InteractiveJobView extends InteractiveJob{phaseStarted?:number;authorizationUrl?:string;text?:string;modelLabel?:string;permission?:{id:string;title:string;details?:string;options:{optionId:string;name:string;kind:string}[]}|null;result?:{message?:string;models?:{modelId:string;name?:string}[];currentModel?:string;[k:string]:unknown};}
 export interface ChatgptStatus{connected:boolean;email:string;pending:boolean;permissionDeclined:boolean;error:string;}
-export type ProcessMode='preparation'|'reference';
+export type ProcessMode='preparation'|'reference'|'session';
 export type AskResult={messages:ChatMessage[]}|{chatgptJobId:string}|{acpJobId:string};
 
 export class ApiError extends Error{constructor(message:string,public status:number){super(message);}}
@@ -50,7 +54,24 @@ export const api={
  referenceReader:(id:string,sourceId:string)=>request<ReferenceReader>(project(id)+'/reference-reader?source='+encodeURIComponent(sourceId)),
  referenceFileUrl:(id:string,sourceId:string)=>project(id)+'/reference-file?source='+encodeURIComponent(sourceId),
  /** Starts a background generation; the task then shows up in project.tasks. */
- process:(id:string,mode:ProcessMode,sourceId?:string)=>post<unknown>(project(id)+'/process',{mode,...(sourceId?{sourceId}:{})}),
+ process:(id:string,mode:ProcessMode,ref?:string)=>post<unknown>(project(id)+'/process',{mode,...(ref?(mode==='session'?{sessionId:ref}:{sourceId:ref}):{})}),
+
+ // Classes (docs/API.md §3).
+ transcript:(id:string,sessionId:string)=>request<Transcript>(project(id)+'/transcript?session='+encodeURIComponent(sessionId)),
+ uploadSrt:(id:string,sessionId:string,file:File)=>request<Project>(project(id)+'/upload',{method:'POST',headers:{'X-File-Name':encodeURIComponent(file.name),'X-File-Role':'srt','X-Session-Id':sessionId},body:file}),
+ /** Recordings can be large, so this one reports upload progress (0–1). */
+ uploadAudio:(id:string,sessionId:string,file:File,onProgress?:(fraction:number)=>void)=>new Promise<Project>((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST',project(id)+'/audio-upload');
+  xhr.setRequestHeader('X-File-Name',encodeURIComponent(file.name));xhr.setRequestHeader('X-Session-Id',sessionId);
+  xhr.upload.onprogress=e=>{if(e.lengthComputable)onProgress?.(e.loaded/e.total);};
+  xhr.onload=()=>{let data:any=null;try{data=JSON.parse(xhr.responseText);}catch{/* non-JSON */}xhr.status>=200&&xhr.status<300?resolve(data):reject(new ApiError(data?.error||'上传失败（'+xhr.status+'）。',xhr.status));};
+  xhr.onerror=()=>reject(new ApiError('无法连接本地服务。请确认 Classroom 窗口仍在运行。',0));
+  xhr.send(file);
+ }),
+ audioBinding:(id:string,sessionId:string,change:{offsetMs:number}|{bindCurrent:true})=>post<Project>(project(id)+'/audio-binding',{sessionId,...change}),
+ outputUrl:(id:string,name:string,scope:string)=>project(id)+'/output?name='+encodeURIComponent(name)+'&scope='+encodeURIComponent(scope)+'&download=1',
+ sourceUrl:(id:string,sourceId:string)=>project(id)+'/source?id='+encodeURIComponent(sourceId),
  ask:(id:string,question:string,scope:string,focus:unknown=null)=>post<AskResult>(project(id)+'/ask',{question,scope,focus}),
  cancelAiParse:(id:string,sourceId:string)=>post<unknown>(project(id)+'/ai-parse-cancel',{sourceId}),
  job:(kind:'acp'|'chatgpt',jobId:string)=>request<InteractiveJobView>('/api/'+kind+'/jobs/'+encodeURIComponent(jobId)),
