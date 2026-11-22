@@ -312,7 +312,8 @@ const server=http.createServer(async(req,res)=>{
     else {const allowed={models:['defaultProfileId'],routes:['modelRoutes','fallbackProfileId','fallbackEnabled'],mineru:['mineruToken','clearMineruToken','mineruLanguage','uploadConcurrency'],preview:['previewEngine','browserPath','libreOfficePath'],advanced:['contextConcurrency','parseConcurrency','compactPptImages','chunkChars','structuredOutput']}[b.section];if(!allowed)throw Error('无效设置分类。');s=mergeSettings(s,Object.fromEntries(allowed.filter(k=>Object.hasOwn(b,k)).map(k=>[k,b[k]])));}
     validateSettings(s);await save(path.join(DATA,'settings.json'),s);
    }else if(method!=='GET')throw Error('无效设置操作。');
-   return respond(res,200,{...s,acpPaths:acpPathsForSettings(s),modelProfiles:publicProfiles(s),apiKey:undefined,parseApiKey:undefined,fallbackApiKey:undefined,mineruKey:undefined,mineruToken:undefined,hasMineruToken:!!s.mineruToken});
+   const bundled=path.join(ROOT,'agy-acp-server','agy_acp_server.exe'),acpBundled=await access(bundled).then(()=>bundled,()=>'');
+   return respond(res,200,{...s,acpBundled,acpPaths:acpPathsForSettings(s),modelProfiles:publicProfiles(s),apiKey:undefined,parseApiKey:undefined,fallbackApiKey:undefined,mineruKey:undefined,mineruToken:undefined,hasMineruToken:!!s.mineruToken});
   }
   if(url.pathname==='/api/settings/acp-logout'&&method==='POST'){
    const input=await payload(req);

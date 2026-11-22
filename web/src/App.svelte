@@ -4,6 +4,7 @@
  import AskPanel from './components/AskPanel.svelte';
  import Pending from './components/Pending.svelte';
  import ReadWorkspace from './components/read/ReadWorkspace.svelte';
+ import SettingsPage from './components/settings/SettingsPage.svelte';
  import {store} from './lib/store.svelte';
  import {router,courseHref} from './lib/router.svelte';
 
@@ -43,9 +44,9 @@
   {#if store.connectionError}
    <p class="banner" role="alert">{store.connectionError}</p>
   {/if}
-  <main class="content" class:flush={route.page==='course'&&route.workspace==='read'}>
+  <main class="content" class:flush={route.page==='settings'||route.page==='course'&&route.workspace==='read'}>
    {#if route.page==='settings'}
-    <Pending title="设置" description="模型连接、功能分配、MinerU、原页预览与高级设置。"/>
+    <SettingsPage/>
    {:else if route.page==='course'}
     {#if store.currentError}
      <section class="message"><h1>无法打开课程</h1><p>{store.currentError}</p></section>

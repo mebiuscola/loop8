@@ -152,7 +152,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 |---|---|---|
 | GET | `/api/settings` | 旧版设置读取（脱敏）。当前前端未调用 |
 | POST | `/api/settings` | 旧版整体保存。当前前端未调用 |
-| GET | `/api/settings/editor` | 新设置编辑器数据（脱敏，含 `acpPaths`、`modelProfiles`） |
+| GET | `/api/settings/editor` | 新设置编辑器数据（脱敏，含 `acpPaths`、`modelProfiles`）。`acpBundled`：随包分发的 `agy-acp-server\agy_acp_server.exe` 的绝对路径，文件不存在时为空字符串；只读，不写入设置 |
 | POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`）、`models`、`routes`、`mineru`、`preview`、`advanced` |
 | POST | `/api/settings/model-test` | 测试某个模型连接。体：`{kind, profile}`，kind ∈ `ai/text/json/vision/inspect/login`。返回 `202` 任务 |
 | POST | `/api/settings/test` | 测试 MinerU、视觉模型等。体：`{kind, settings?, task?}` |
