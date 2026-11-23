@@ -2,7 +2,7 @@ import {translateReference,referenceProgress,referenceMarkdown} from './lib/refe
 import {readingIndex,searchReading} from './lib/reading-index.mjs';
 import {registerReadingReferences} from './lib/reading-references.mjs';
 import {renderReadingCitations} from './lib/deep-dive.mjs';
-import {resolveModel,mergeModelProfiles,validateModelRouting,publicProfiles,taskForStage,migrateModelSettings,acpPathsForSettings,setAcpPaths} from './lib/model-routing.mjs';
+import {resolveModel,mergeModelProfiles,validateModelRouting,publicProfiles,taskForStage,migrateModelSettings,acpPathsForSettings,setAcpPaths,shareConnection,connectionOf} from './lib/model-routing.mjs';
 import {acpInteraction} from './lib/acp-interaction.mjs';
 import {acpRuntime,createAcpPool} from './lib/acp-client.mjs';
 import {interactiveJobs} from './lib/acp-jobs.mjs';
@@ -323,9 +323,11 @@ const server=http.createServer(async(req,res)=>{
     if(b.section==='model'){
      const p=b.profile;if(!p?.id)throw Error('模型编号无效。');
      s.modelProfiles=mergeModelProfiles(s,{modelProfiles:[...s.modelProfiles.filter(x=>x.id!==p.id),p]});
+     s.modelProfiles=shareConnection(s.modelProfiles,s.modelProfiles.find(x=>x.id===p.id),p);
      if(p.provider==='antigravity-acp'&&b.acpPaths!==undefined)setAcpPaths(s,b.acpPaths);
     }
-    else if(b.section==='delete-model'){const id=b.profileId;s.modelProfiles=s.modelProfiles.filter(p=>p.id!==id);if(s.defaultProfileId===id)s.defaultProfileId='';if(s.fallbackProfileId===id){s.fallbackProfileId='';s.fallbackEnabled=false;}for(const task of Object.keys(s.modelRoutes))if(s.modelRoutes[task]===id)s.modelRoutes[task]='';}
+    // delete-model removes one model; delete-connection removes every model of an API connection.
+    else if(b.section==='delete-model'||b.section==='delete-connection'){const gone=new Set(b.section==='delete-model'?[b.profileId]:s.modelProfiles.filter(p=>(!p.provider||p.provider==='api')&&connectionOf(p)===b.connectionId).map(p=>p.id));s.modelProfiles=s.modelProfiles.filter(p=>!gone.has(p.id));if(gone.has(s.defaultProfileId))s.defaultProfileId='';if(gone.has(s.fallbackProfileId)){s.fallbackProfileId='';s.fallbackEnabled=false;}for(const task of Object.keys(s.modelRoutes))if(gone.has(s.modelRoutes[task]))s.modelRoutes[task]='';}
     else {const allowed={models:['defaultProfileId'],routes:['modelRoutes','fallbackProfileId','fallbackEnabled'],mineru:['mineruToken','clearMineruToken','mineruLanguage','uploadConcurrency'],preview:['previewEngine','browserPath','libreOfficePath'],advanced:['contextConcurrency','parseConcurrency','compactPptImages','chunkChars','structuredOutput']}[b.section];if(!allowed)throw Error('无效设置分类。');s=mergeSettings(s,Object.fromEntries(allowed.filter(k=>Object.hasOwn(b,k)).map(k=>[k,b[k]])));}
     validateSettings(s);await save(path.join(DATA,'settings.json'),s);
    }else if(method!=='GET')throw Error('无效设置操作。');

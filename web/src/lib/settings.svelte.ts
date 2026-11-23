@@ -19,6 +19,10 @@ const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const comparable=({apiKey:_k,clearApiKey:_c,hasApiKey:_h,...rest}:ModelProfile)=>rest;
 const slug=(s:string)=>s.replace(/[^\w-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60)||'model';
 
+/** The API connection a model belongs to (docs/API.md: connectionId, or its own id). */
+export const connectionOf=(p:ModelProfile)=>p.connectionId||p.id;
+/** Fields of an API connection, kept the same on all of its models. */
+export const CONNECTION_FIELDS=['name','baseUrl','outputTokenField','apiKey','clearApiKey'] as const;
 export function providerOf(p:ModelProfile):AccountKind|'api'{return p.provider==='antigravity-acp'?'acp':p.provider==='chatgpt-plan'?'chatgpt':'api';}
 
 export class SettingsModel{
@@ -85,7 +89,7 @@ export class SettingsModel{
   if(!value)return '';
   if(value.startsWith(NEW_PREFIX)){const [,kind,...rest]=value.split(':');const id=rest.join(':');return (kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind as AccountKind].find(m=>m.modelId===id)?.name||id);}
   const p=this.saved?.modelProfiles.find(x=>x.id===value);if(!p)return '';
-  const kind=providerOf(p);return kind==='api'?p.name:(kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind].find(m=>m.modelId===p.model)?.name||p.model);
+  const kind=providerOf(p);return kind==='api'?(this.saved!.modelProfiles.filter(x=>providerOf(x)==='api'&&connectionOf(x)===connectionOf(p)).length>1?p.name+' · '+p.model:p.name):(kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind].find(m=>m.modelId===p.model)?.name||p.model);
  }
  /** What a task actually uses after defaults. */
  actual(task:string):string{
@@ -171,6 +175,37 @@ export class SettingsModel{
    // Keep what did get saved, without losing the remaining drafts.
    try{this.saved=await api.settings();}catch{/* keep previous */}
   }finally{this.saving=false;}
+ }
+
+ /** API connections in order, each with its models (unsaved ones last). */
+ get connections(){
+  const out:{id:string;models:ModelProfile[]}[]=[];
+  for(const p of this.profiles.filter(x=>providerOf(x)==='api')){
+   const id=connectionOf(p),group=out.find(c=>c.id===id);
+   if(group)group.models.push(p);else out.push({id,models:[p]});
+  }
+  return out;
+ }
+ /** Sets a connection field on every model of the connection. */
+ setConnection(id:string,key:typeof CONNECTION_FIELDS[number],value:string|boolean){
+  for(const p of this.profiles)if(providerOf(p)==='api'&&connectionOf(p)===id)(p as any)[key]=value;
+ }
+ /** A new model on an existing connection: same address, name and key (the key is filled in by the server). */
+ addModel(id:string){
+  const first=this.profiles.find(p=>providerOf(p)==='api'&&connectionOf(p)===id);if(!first)return '';
+  const p:ModelProfile={id:crypto.randomUUID(),connectionId:id,name:first.name,provider:'api',baseUrl:first.baseUrl,model:'',apiKey:first.apiKey||'',hasApiKey:first.hasApiKey,
+   contextChars:first.contextChars,maxOutputTokens:first.maxOutputTokens,outputTokenField:first.outputTokenField,visionEnabled:true};
+  this.profiles=[...this.profiles,p];return p.id;
+ }
+ /** Removes a whole API connection with all of its models. */
+ async removeConnection(id:string){
+  this.error='';
+  const models=this.profiles.filter(p=>providerOf(p)==='api'&&connectionOf(p)===id);
+  if(!models.some(p=>this.saved?.modelProfiles.some(x=>x.id===p.id))){this.profiles=this.profiles.filter(p=>!models.includes(p));return;}
+  this.saving=true;
+  try{const next=await api.saveSettings({section:'delete-connection',connectionId:id});this.profiles=this.profiles.filter(p=>!models.includes(p));this.adopt(next);}
+  catch(e){this.error=(e as Error).message;}
+  finally{this.saving=false;}
  }
 
  async remove(id:string){
