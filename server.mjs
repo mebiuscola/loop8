@@ -4,7 +4,7 @@ import {registerReadingReferences} from './lib/reading-references.mjs';
 import {renderReadingCitations} from './lib/deep-dive.mjs';
 import {resolveModel,mergeModelProfiles,validateModelRouting,publicProfiles,taskForStage,migrateModelSettings,acpPathsForSettings,setAcpPaths,shareConnection,connectionOf} from './lib/model-routing.mjs';
 import {acpInteraction} from './lib/acp-interaction.mjs';
-import {acpRuntime,createAcpPool} from './lib/acp-client.mjs';
+import {acpRuntime,createAcpPool,acpTimings,describeAcpTiming} from './lib/acp-client.mjs';
 import {interactiveJobs} from './lib/acp-jobs.mjs';
 import {inspectRecognition,learningFreshness} from './lib/ppt-quality.mjs';
 import {PPT_CONTENT_SCHEMA,draftToPage,normalizePptDraft} from './lib/ppt-response.mjs';
@@ -362,13 +362,16 @@ const server=http.createServer(async(req,res)=>{
    if(selected.provider==='antigravity-acp'){
     if(!['ai','text','json','vision','inspect','login'].includes(b.kind))throw Error('无效 ACP 测试类型。');
     if(acpJobs.busy||acpRuntime.busy)throw Error('ACP 正在处理另一项交互，请完成或停止后再试。');
-    return respond(res,202,{...acpJobs.start(options=>['inspect','login'].includes(b.kind)?acpRuntime.run(selected,{...options,action:b.kind}):testConnection(b.kind,selected,async text=>options.onUpdate({sessionUpdate:'status',text},''),options.signal,options).then(message=>({message}))),transport:'acp'});
+    const testStarted=Date.now()-1000;
+    return respond(res,202,{...acpJobs.start(options=>['inspect','login'].includes(b.kind)?acpRuntime.run(selected,{...options,action:b.kind}):testConnection(b.kind,selected,async text=>options.onUpdate({sessionUpdate:'status',text},''),options.signal,options).then(message=>{const t=acpTimings.at(-1),fresh=t&&Date.parse(t.at)>=testStarted;return {message:message+(fresh?' '+describeAcpTiming(t)+'。':'')};})),transport:'acp'});
    }
    if(!['ai','text','json','vision'].includes(b.kind))throw Error('API 连接不使用账号登录。');
    const job={id:randomUUID(),status:'running',stage:'准备测试',started:Date.now(),updated:Date.now(),limitSeconds:MODEL_TEST_SECONDS},controller=new AbortController();diagnostics.set(job.id,job);job.controller=controller;const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_TEST_SECONDS*1000)]);
    testConnection(b.kind,{...selected,parseBaseUrl:selected.baseUrl,parseApiKey:selected.apiKey,parseModel:selected.model},async text=>{job.stage=text;job.updated=Date.now();},signal).then(message=>{job.status='success';job.message=message;}).catch(e=>{job.status='error';job.message=controller.signal.aborted?'\u6d4b\u8bd5\u5df2\u505c\u6b62\u3002':diagnosticError(e,signal,selected,'model');}).finally(()=>job.finished=Date.now());return respond(res,202,{...job,controller:undefined,transport:'api'});
   }
   if(parts[0]==='api'&&parts[1]==='settings'&&parts[2]==='test'&&parts[3]&&parts[4]==='cancel'&&method==='POST'){diagnostics.get(parts[3])?.controller?.abort();return respond(res,200,{ok:true});}
+  // Where recent Antigravity requests spent their time (seconds per phase; no request or reply text).
+  if(url.pathname==='/api/acp/timings'&&method==='GET')return respond(res,200,{timings:acpTimings});
   if(url.pathname==='/api/acp/connect'&&method==='POST'){
    const b=await payload(req);if(!['inspect','login','text','vision'].includes(b.action))throw Error('无效 ACP 操作。');
    const s=mergeSettings(await config(),b.settings||{});validateSettings(s);const profile=s.modelProfiles.find(p=>p.id===b.profileId&&p.provider==='antigravity-acp');if(!profile)throw Error('请选择 ACP 连接。');
