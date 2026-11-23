@@ -160,7 +160,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | GET | `/api/settings` | 旧版设置读取（脱敏）。当前前端未调用 |
 | POST | `/api/settings` | 旧版整体保存。当前前端未调用 |
 | GET | `/api/settings/editor` | 新设置编辑器数据（脱敏，含 `acpPaths`、`modelProfiles`）。`acpBundled`：随包分发的 `agy-acp-server\agy_acp_server.exe` 的绝对路径，文件不存在时为空字符串；只读，不写入设置 |
-| POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`）、`models`、`routes`、`mineru`、`preview`、`advanced` |
+| POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`，删除一个模型）、`delete-connection`（`connectionId`，删除一个 API 连接下的全部模型）、`models`、`routes`、`mineru`、`preview`、`advanced`。一个 API 连接可有多个模型：每个模型仍是一个 `profile`，同一连接的模型带相同的 `connectionId`（没有时等于自身 `id`，即单模型连接）；`baseUrl`、`outputTokenField`、`name`（连接名称）属于连接，保存其中一个模型时同步到同连接的其他模型，带新密钥或清除密钥时密钥也同步；新加的模型不带密钥时使用该连接已保存的密钥 |
 | POST | `/api/settings/model-test` | 测试某个模型连接。体：`{kind, profile}`，kind ∈ `ai/text/json/vision/inspect/login`。返回 `202` 任务 |
 | POST | `/api/settings/test` | 测试 MinerU、视觉模型等。体：`{kind, settings?, task?}` |
 | GET | `/api/settings/test/:jobId` | 测试结果 |
