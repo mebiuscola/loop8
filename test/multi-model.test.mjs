@@ -5,7 +5,7 @@ import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {mergeModelProfiles,shareConnection,connectionOf,validateModelRouting,resolveModel} from '../lib/model-routing.mjs';
+import {mergeModelProfiles,shareConnection,connectionOf,validateModelRouting,resolveModel,publicProfiles} from '../lib/model-routing.mjs';
 
 const base={provider:'api',baseUrl:'https://api.example.com/v1',outputTokenField:'max_tokens',contextChars:180000,maxOutputTokens:12000};
 
@@ -30,6 +30,15 @@ test('models of one API connection share its address, name and key; each stays i
  assert.equal(resolveModel(s,'qa').model,'deepseek-reasoner');assert.equal(resolveModel(s,'deepDive').model,'deepseek-chat');
  assert.equal(resolveModel(s,'qa').apiKey,'k-2');
  assert.throws(()=>validateModelRouting({...s,modelProfiles:[{...shared[0],connectionId:'bad id!'}]}),/API 连接编号无效/);
+});
+
+test('a model saved without its own key (by an older server) uses its connection key',()=>{
+ const s={modelRoutingVersion:2,modelProfiles:[{...base,id:'ds',name:'DeepSeek',model:'deepseek-chat',apiKey:'k-1'},{...base,id:'ds-r',connectionId:'ds',name:'DeepSeek',model:'deepseek-reasoner',apiKey:''}],modelRoutes:{qa:'ds-r'},defaultProfileId:'ds',fallbackProfileId:''};
+ assert.equal(resolveModel(s,'qa').apiKey,'k-1','used for tasks and tests');
+ assert.equal(publicProfiles(s).find(p=>p.id==='ds-r').hasApiKey,true,'the settings page does not report a missing key');
+ assert.equal(publicProfiles(s).find(p=>p.id==='ds-r').apiKey,undefined);
+ // A model of another connection never borrows a key.
+ assert.equal(resolveModel({...s,modelProfiles:[...s.modelProfiles,{...base,id:'x',name:'X',model:'m',apiKey:''}],modelRoutes:{qa:'x'}},'qa').apiKey,'');
 });
 
 test('the settings page saves a second model on a connection and deletes the whole connection',async()=>{
