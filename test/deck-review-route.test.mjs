@@ -19,3 +19,10 @@ test('migrating old settings leaves the whole-deck check following recognition',
  assert.equal(migrated.modelRoutes.deckReview||'','');
  assert.equal(resolveModel(migrated,'deckReview').profileId,'deep');
 });
+
+test('the reference glossary follows reference translation until it has its own model',()=>{
+ const settings={modelRoutingVersion:2,modelProfiles:[acp('deep','high'),acp('quick','low')],defaultProfileId:'quick',modelRoutes:{referenceTranslation:'deep'}};
+ assert.equal(resolveModel(settings,'referenceTerms').profileId,'deep');
+ assert.equal(resolveModel({...settings,modelRoutes:{referenceTranslation:'deep',referenceTerms:'quick'}},'referenceTerms').profileId,'quick');
+ assert.equal(migrateModelSettings({...settings,modelRoutes:{}}).modelRoutes.referenceTerms||'','');
+});

@@ -44,16 +44,17 @@ test('updating only translation or explanation preserves recognized content and 
 });
 test('server keeps profile secrets private, translates a reference only, isolates file QA and changes purpose without copying originals',async()=>{
  const data=await mkdtemp(path.join(os.tmpdir(),'classroom-models-')),seen=[];let ui;
- const mock=http.createServer(async(req,res)=>{let raw='';for await(const c of req)raw+=c;const b=JSON.parse(raw),system=b.messages[0].content,input=JSON.parse(b.messages[1].content);seen.push({model:b.model,key:req.headers.authorization,system,input});let answer='Shared notes';if(system.includes('Reference bilingual translation'))answer=JSON.stringify({chinese:'文献中文译文。'});else if(system.includes('Reconstruct classroom'))answer=JSON.stringify({segments:input.cues.map(c=>({speaker:'Lecturer',chapter:'Class',english:c.text,cueIds:[c.id]}))});else if(system.includes('Paragraph translation'))answer=JSON.stringify({chinese:'课堂中文译文。'});else if(system.includes('Ask this class'))answer='Only the selected document supports this claim. [R1]';else if(system.includes('Deep Dive issue plan'))answer=JSON.stringify({issues:['How is evidence distinguished?']});else if(system.includes('Weekly synthesis'))answer='## Analysis\n\nA grounded comparison.';if(input.english==='ABORT_THIS_BLOCK'&&b.model==='translator'){res.writeHead(401);return res.end();}const filtered=input.english==='FILTER_THIS_BLOCK'&&b.model==='translator';res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:filtered?'content_filter':'stop',message:{content:filtered?null:answer}}]}));});await listenSafe(mock);
+ const mock=http.createServer(async(req,res)=>{let raw='';for await(const c of req)raw+=c;const b=JSON.parse(raw),system=b.messages[0].content,input=JSON.parse(b.messages[1].content.split(String.fromCharCode(10,10)+'Formatting retry')[0]);seen.push({model:b.model,key:req.headers.authorization,system,input});let answer='Shared notes';if(system.includes('Reference glossary'))answer=JSON.stringify({terms:[]});else if(system.includes('Reference bilingual translation'))answer=input.items?JSON.stringify({translations:input.items.map(i=>({id:i.id,chinese:'文献中文译文。'}))}):JSON.stringify({chinese:'文献中文译文。'});else if(system.includes('Reconstruct classroom'))answer=JSON.stringify({segments:input.cues.map(c=>({speaker:'Lecturer',chapter:'Class',english:c.text,cueIds:[c.id]}))});else if(system.includes('Paragraph translation'))answer=JSON.stringify({chinese:'课堂中文译文。'});else if(system.includes('Ask this class'))answer='Only the selected document supports this claim. [R1]';else if(system.includes('Deep Dive issue plan'))answer=JSON.stringify({issues:['How is evidence distinguished?']});else if(system.includes('Weekly synthesis'))answer='## Analysis\n\nA grounded comparison.';const has=text=>input.english===text||!!input.items?.some(i=>i.english===text);if(has('ABORT_THIS_BLOCK')&&b.model==='translator'){res.writeHead(401);return res.end();}const filtered=has('FILTER_THIS_BLOCK')&&b.model==='translator';res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:filtered?'content_filter':'stop',message:{content:filtered?null:answer}}]}));});await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:data,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
   for(let i=0;i<150&&!log.includes('http://');i++)await sleep(30);const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);const api=async(url,b)=>{const r=await fetch(base+url,b===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});const value=await r.json();assert(r.ok,JSON.stringify(value));return value;};
   const profiles=['translator','asker','scholar'].map((model,i)=>({id:model,name:model,model,baseUrl:`http://127.0.0.1:${mock.address().port}/v1`,apiKey:'secret-'+i,contextChars:70000,maxOutputTokens:4000}));await api('/api/settings',{baseUrl:profiles[0].baseUrl,model:'default',apiKey:'default-secret',modelProfiles:profiles,modelRoutes:{referenceTranslation:'translator',transcriptTranslation:'translator',qa:'asker',weeklyDeepDive:'scholar'}});let settings=await api('/api/settings');assert(settings.modelProfiles.every(p=>!('apiKey' in p)&&p.hasApiKey));assert(!JSON.stringify(settings).includes('secret-'));
   await api('/api/settings',{modelProfiles:settings.modelProfiles.map(p=>({...p,apiKey:''})),modelRoutes:settings.modelRoutes});assert.equal(JSON.parse(await readFile(path.join(data,'settings.json'),'utf8')).modelProfiles[0].apiKey,'secret-0');
   const p=await api('/api/projects',{name:'Reference library'}),route='/api/projects/'+p.id;await api(route+'/bb',{text:'UNRELATED_BB must not enter focused reference questions.'});
+  const translation=r=>r.system.includes('Reference bilingual translation'),englishOf=r=>r.input.items?r.input.items.map(i=>i.english):[r.input.english];
   const upload=async(name,text)=>{const r=await fetch(base+route+'/upload',{method:'POST',headers:{'x-file-role':'reading','x-file-name':name},body:validPdf(Array.isArray(text)?text.length:1)+name});assert.equal(r.status,201);const state=await r.json(),f=state.files.at(-1);const parsed=await fetch(base+route+'/parsed?source='+f.id,{method:'POST',headers:{'x-parse-format':'json'},body:JSON.stringify(Array.isArray(text)?text.map((text,page_idx)=>({type:'text',page_idx,text})):[{type:'text',page_idx:0,text}])});assert.equal(parsed.status,200);return f;};
   const a=await upload('A.pdf','SELECTED_ORIGINAL: Evidence is different from interpretation.'),b=await upload('B.pdf','UNRELATED_REFERENCE must not enter A.');
-  await api(route+'/process',{mode:'reference',sourceId:a.id});let state;for(let i=0;i<200;i++){state=await api(route);if(state.status!=='running')break;await sleep(20);}assert.equal(state.status,'done',state.error);assert(!state.weekly);assert.equal(seen.length,1);assert.equal(seen[0].model,'translator');assert.equal(seen[0].key,'Bearer secret-0');assert(!seen[0].input.english.includes('UNRELATED'));
+  await api(route+'/process',{mode:'reference',sourceId:a.id});let state;for(let i=0;i<200;i++){state=await api(route);if(state.status!=='running')break;await sleep(20);}assert.equal(state.status,'done',state.error);assert(!state.weekly);const refs=seen.filter(translation);assert.equal(refs.length,1);assert.equal(seen.filter(r=>r.system.includes('Reference glossary')).length,1,'the reference glossary is built once');assert.equal(refs[0].model,'translator');assert.equal(refs[0].key,'Bearer secret-0');assert(!englishOf(refs[0]).join().includes('UNRELATED'));assert(!('weeklyTerminology' in refs[0].input),'the week glossary is not sent with a reference');
   const reader=await api(route+'/reference-reader?source='+a.id);assert(reader.generated);assert.equal(reader.paragraphs[0].chinese,'文献中文译文。');assert.equal(reader.paragraphs[0].pageIndex,0);const generation=state.files.find(f=>f.id===a.id).referenceTranslation.generation;
   const answer=await api(route+'/ask',{question:'What is evidence?',scope:'preparation',focus:{kind:'file',sourceId:a.id}});assert(answer.answer.includes('reading-reference?ref=r-'));const ask=seen.at(-1);assert.equal(ask.model,'asker');assert(ask.input.passages.every(v=>v.sourceId===a.id));assert(!JSON.stringify(ask.input).includes('UNRELATED'));assert.equal(ask.input.sourceNotes.length,0);
   const md=await (await fetch(base+route+'/output?scope='+encodeURIComponent('reference:'+a.id)+'&name=Bilingual.md')).text();assert(md.startsWith('# A.pdf'));
@@ -88,7 +89,9 @@ test('server keeps profile secrets private, translates a reference only, isolate
   const readerUrl=route+'/reference-reader?source='+c.id,outputUrl=route+'/output?scope='+encodeURIComponent('reference:'+c.id)+'&name=Bilingual.md';
   const from=seen.length;
   assert.equal((await processReference()).status,'partial');
-  assert.deepEqual(seen.slice(from).map(r=>r.input.english),['FIRST_REFERENCE_BLOCK','FILTER_THIS_BLOCK','LAST_REFERENCE_BLOCK']);
+  // One batch across the three pages; the filtered batch is split until the filtered paragraph is alone.
+  assert.deepEqual(englishOf(seen.slice(from).filter(translation)[0]),['FIRST_REFERENCE_BLOCK','FILTER_THIS_BLOCK','LAST_REFERENCE_BLOCK']);
+  assert.deepEqual([...new Set(seen.slice(from).filter(translation).flatMap(englishOf))].sort(),['FILTER_THIS_BLOCK','FIRST_REFERENCE_BLOCK','LAST_REFERENCE_BLOCK']);
   const partial=await api(readerUrl);
   assert.deepEqual(partial.summary,{total:3,completed:2,blocked:1});
   assert.equal(partial.paragraphs[1].status,'blocked');
@@ -124,7 +127,7 @@ test('server keeps profile secrets private, translates a reference only, isolate
    assert.equal(await ui.evaluate(pageBox),'3','the translation update keeps the current page');
    await until(async()=> (await api(route)).status==='done');
   }else assert.equal((await processReference('scholar')).status,'done');
-  assert.deepEqual(seen.slice(retryFrom).map(r=>[r.model,r.input.english]),[['scholar','FILTER_THIS_BLOCK']]);
+  assert.deepEqual(seen.slice(retryFrom).filter(translation).map(r=>[r.model,englishOf(r).join()]),[['scholar','FILTER_THIS_BLOCK']]);
   const recovered=await api(readerUrl);
   assert.deepEqual(recovered.summary,{total:3,completed:3,blocked:0});
   assert.deepEqual(recovered.paragraphs.map(r=>r.model),['translator','scholar','translator']);
@@ -132,12 +135,13 @@ test('server keeps profile secrets private, translates a reference only, isolate
   const legacy=await upload('Legacy interrupted.pdf',['CACHED_BEFORE_FAILURE','ABORT_THIS_BLOCK','NOT_YET_ATTEMPTED']);
   const legacyFrom=seen.length;
   assert.equal((await processReference(undefined,legacy.id)).status,'error');
-  assert.deepEqual(seen.slice(legacyFrom).map(r=>r.input.english),['CACHED_BEFORE_FAILURE','ABORT_THIS_BLOCK'],'global credential errors stop the run');
-  // Reproduce the previous release, which had the model cache but no per-reference checkpoint.
+  // The three paragraphs go in one batch; a credential error stops the run instead of splitting it.
+  assert.deepEqual(seen.slice(legacyFrom).filter(translation).map(englishOf),[['CACHED_BEFORE_FAILURE','ABORT_THIS_BLOCK','NOT_YET_ATTEMPTED']],'global credential errors stop the run');
+  // Finished with another model (older model-cache imports are covered by reference-cache-progress.test.mjs).
   await rm(path.join(data,'classes',p.id,'Parsed',legacy.id,'reference-translation.json'));
   const migratedFrom=seen.length;
   assert.equal((await processReference('scholar',legacy.id)).status,'done');
-  assert.deepEqual(seen.slice(migratedFrom).map(r=>[r.model,r.input.english]),[['scholar','ABORT_THIS_BLOCK'],['scholar','NOT_YET_ATTEMPTED']]);
+  assert.deepEqual(seen.slice(migratedFrom).filter(translation).map(r=>[r.model,englishOf(r)]),[['scholar',['CACHED_BEFORE_FAILURE','ABORT_THIS_BLOCK','NOT_YET_ATTEMPTED']]]);
 
  }finally{await ui?.close();child.kill();await new Promise(r=>child.once('exit',r));await new Promise(r=>mock.close(r));await rm(data,{recursive:true,force:true});}
 });

@@ -96,7 +96,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | `session` | 本节课讲稿 | context, classroom, transcriptTranslation |
 | `analysis` | 本节课 Deep Dive | context, deepDive |
 | `week` | 整周 Deep Dive | context, weeklyDeepDive |
-| `reference` | 参考文献翻译 | referenceTranslation |
+| `reference` | 参考文献翻译（2026-11-24 起）：先从这篇文献本身整理术语表（每约 3 万字一次请求，模型给出的词必须在原文中出现才保留，最多 120 条，存于 `Parsed/<id>/reference-terms.json`，原文解析不变时复用；失败时照常翻译并给出提示），再按约 4000 字符 / 12 段一批翻译（可跨页），按"材料解析并发数"同时进行；每批只带上批内出现的术语 `referenceTerminology`，不带课件的本周术语表 | referenceTranslation, referenceTerms（参考文献术语整理；未单独指定时跟随 referenceTranslation） |
 | `reading` | Reading / BB PDF 解析（需 `sourceId`）。先读 PDF 自带文字层，扫描件或文字损坏时交给 MinerU；`engine:"mineru"` 始终用 MinerU。完成后文件带 `parseSource`：`text-layer` 或 `mineru`（旧数据和导入的解析没有此字段） | — |
 
 若所选模型是 ACP 或 ChatGPT 订阅，返回值中带 `acpJobId` 或 `chatgptJobId`，前端随后用第 7 节的 jobs 接口跟踪。
@@ -128,7 +128,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/projects/:id/reference-reader?source=` | 段落、译文、进度、是否过期 |
+| GET | `/api/projects/:id/reference-reader?source=` | 段落、译文、进度、是否过期；`terminology`：本文术语表 `{terms:[{english,chinese,scope,pages,alternatives?}],status:"complete"|"partial",error,current}` 或 null（current 为 false 表示原文解析已更新，下次翻译时重新整理）。AI 整理，界面与原文、译文分开显示 |
 | GET/HEAD | `/api/projects/:id/reference-file?source=` | 参考文献 PDF 原件 |
 | GET | `/api/projects/:id/reading-reference?ref=` | 独立的引用查看页面（HTML） |
 | GET | `/api/projects/:id/reading-reference-data?ref=` | 引用数据 |
