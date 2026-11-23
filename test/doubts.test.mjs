@@ -92,3 +92,28 @@ test('existing results are recounted once at startup, without re-parsing; hints 
   await rm(dir,{recursive:true,force:true,maxRetries:4,retryDelay:50});
  }
 });
+
+test('doubt rules from skills/doubt_rules.md reach the model; editing them keeps finished pages',async()=>{
+ const {aiMaterialService}=await import('../lib/ai-material.mjs');
+ const {serialWriter}=await import('../lib/concurrency.mjs');
+ const {cp}=await import('node:fs/promises');
+ const repo=path.resolve(new URL('..',import.meta.url).pathname.replace(/^\/([A-Za-z]:)/,'$1'));
+ const root=await mkdtemp(path.join(os.tmpdir(),'classroom-rules-root-')),dir=await mkdtemp(path.join(os.tmpdir(),'classroom-rules-'));
+ try{
+  await cp(path.join(repo,'skills'),path.join(root,'skills'),{recursive:true});
+  await mkdir(path.join(dir,'Source'));await writeFile(path.join(dir,'Source','r.pdf'),'PDF');
+  const p={id:'Week_R',revision:0,materialRevision:0,files:[{id:'r',name:'r.pdf',stored:'r.pdf',role:'reading'}]},write=serialWriter(),systems=[];
+  const page={printedPage:null,status:'complete',blocks:[{kind:'body',text:'Original text'}],uncertainties:[]};
+  const service=aiMaterialService({root,getClass:async()=>structuredClone(p),dirFor:()=>dir,mutate:async(id,fn)=>write(()=>{fn(p);}),previews:{status:async()=>({status:'missing'})},
+   render:async()=>({open:async()=>({pages:2}),page:async i=>({image:'data:image/png;base64,YQ==',nativeText:'page '+i,warnings:[],speakerNotes:'',hidden:false}),close:async()=>{}}),
+   call:async(settings,system)=>{systems.push(system);return JSON.stringify(page);}});
+  const s={baseUrl:'http://local/v1',apiKey:'secret',model:'vision',maxOutputTokens:8000,parseConcurrency:1};
+  await (await service.start(p.id,'r',s,{origin:'http://local'})).done;
+  assert.equal(systems.length,2);
+  assert(systems.every(t=>t.includes('uncertainties lists only concrete problems')),'the rules are appended');
+  assert(systems.every(t=>!t.includes('可编辑：只规定')),'the editing note in the rules file is not sent');
+  await writeFile(path.join(root,'skills','doubt_rules.md'),'Changed rules for doubts.');
+  await (await service.start(p.id,'r',s,{origin:'http://local'})).done;
+  assert.equal(systems.length,2,'changing the doubt rules does not re-parse finished pages');
+ }finally{await rm(root,{recursive:true,force:true});await rm(dir,{recursive:true,force:true});}
+});

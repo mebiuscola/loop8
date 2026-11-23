@@ -49,7 +49,7 @@ import {analysisState,taskKey} from './lib/workflow.mjs';
 import {pptPages,pageText,pageImages} from './lib/pages.mjs';
 import {bodyParagraphs} from './lib/reader.mjs';
 import {storeSource,originalName,sourcePath,migrateSourceNames} from './lib/storage.mjs';
-import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,readHintChecks,setHintCheck,checkpointFile} from './lib/doubts.mjs';
+import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,readHintChecks,setHintCheck,checkpointFile,doubtRules} from './lib/doubts.mjs';
 import {previewService,pdfInfo} from './lib/preview.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),DATA=process.env.CLASSROOM_DATA||path.join(ROOT,'data');
@@ -441,7 +441,7 @@ const server=http.createServer(async(req,res)=>{
        interaction.status('preparing','准备当前页原图和原生文本');
        const {seed,bytes,sourceHash:hash,renderKey}=await pageCache.page(dir,file,s,{origin:url.origin,index:b.pageIndex,signal:job.signal});
        const input={page:b.pageIndex+1,source:file.name,nativeText:seed.nativeText||'',speakerNotes:seed.speakerNotes||'',hidden:!!seed.hidden,renderWarnings:seed.warnings||[],responseContract:PPT_CONTENT_SCHEMA};
-       const raw=await complete(selected,await skill('ppt_learning'),JSON.stringify(input),{...interaction,json:true,images:['data:image/png;base64,'+bytes.toString('base64')]});
+       const raw=await complete(selected,(await doubtRules(ROOT))(await skill('ppt_learning')),JSON.stringify(input),{...interaction,json:true,images:['data:image/png;base64,'+bytes.toString('base64')]});
        job.signal.throwIfAborted();
        const page=draftToPage(normalizePptDraft(parseJson(raw)),{fileName:file.name,format:path.extname(file.name).slice(1).toLowerCase(),sha256:hash},input);
        inspectRecognition(page,seed,renderKey);
