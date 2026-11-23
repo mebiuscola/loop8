@@ -11,6 +11,7 @@ import {externalPptDocument} from '../lib/ppt-import.mjs';
 import {documentText} from '../lib/materials.mjs';
 import {pageOriginalText,pageEvidenceText,pptPages} from '../lib/pages.mjs';
 import {zipFixture} from './helpers/zip-fixture.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 function report(bytes){return {schema:'classroom.ppt-visual.v1',source:{fileName:'original.pptx',sha256:hash(bytes),format:'pptx',pageCount:2},pages:[{page:1,title:'Comparison',hidden:false,blank:false,originalText:[{text:'ORIGINAL: Comparative literature',method:'native'}],speakerNotes:'NOTES: contextual note',visualObservations:[{id:'diagram1',kind:'diagram',description:'VISUAL: two labelled boxes joined by a right arrow',relations:['A points to B']}],analysis:['ANALYSIS_ONLY: possible process, not proven causality'],uncertainties:[],inspection:{textExtracted:true,fullPageViewed:true,status:'complete'}},{page:2,title:'',hidden:true,blank:false,originalText:[],speakerNotes:'',visualObservations:[],analysis:[],uncertainties:['Could not render this hidden page'],inspection:{textExtracted:false,fullPageViewed:false,status:'unavailable'}}]};}
@@ -31,7 +32,7 @@ test('PPT JSON import blocks cloud fallback, checks fingerprint/count, preserves
   else if(system.includes('Weekly synthesis'))content='# Weekly preliminary analysis';
   else content='[Original text] Comparative literature. [Visual observation] A points to B. [Analysis] possible process. [Uncertainty] page 2 unavailable.';
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content}}]}));
- });await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ });await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:temp,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
   for(let i=0;i<100&&!log.includes('http://');i++)await sleep(30);const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);

@@ -23,7 +23,6 @@
 | `ACP.md` | Antigravity ACP 使用说明 |
 | `PRODUCT.md` | 产品定位与约束 |
 | `AGENTS.md` / `CLAUDE.md` | 给 AI 开发助手的项目规则 |
-| `DESIGN.md`, `.impeccable/` | 旧设计记录，**已过时**，仅供参考 |
 
 ## 开发与发布
 

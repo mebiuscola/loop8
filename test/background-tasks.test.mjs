@@ -10,6 +10,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {testPdf} from '../lib/diagnostics.mjs';
 import {openApp,waitFor,waitText,click,fill} from './helpers/app.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 
 async function until(check){
  for(let i=0;i<220;i++){const result=await check();if(result)return result;await sleep(35);}
@@ -23,7 +24,7 @@ test('MinerU and Ask overlap, keep independent state and preserve navigation and
   if(req.url.startsWith('/mineru/')){uploads.set(decodeURIComponent(req.url.slice(8)),res);return;}
   questions.push(res);
  });
- await new Promise(resolve=>mock.listen(0,'127.0.0.1',resolve));
+ await listenSafe(mock);
  const origin='http://127.0.0.1:'+mock.address().port,hook=path.join(dir,'mock.mjs');
  const preload=`import {registerHooks} from 'node:module';
  registerHooks({load(url,context,next){

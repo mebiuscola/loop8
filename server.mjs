@@ -49,6 +49,8 @@ import {analysisState,taskKey} from './lib/workflow.mjs';
 import {pptPages,pageText,pageImages} from './lib/pages.mjs';
 import {bodyParagraphs} from './lib/reader.mjs';
 import {storeSource,originalName,sourcePath,migrateSourceNames} from './lib/storage.mjs';
+import {UNSAFE_PORTS} from './lib/ports.mjs';
+import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,readHintChecks,setHintCheck,checkpointFile,doubtRules} from './lib/doubts.mjs';
 import {previewService,pdfInfo} from './lib/preview.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),DATA=process.env.CLASSROOM_DATA||path.join(ROOT,'data');
@@ -62,10 +64,21 @@ const config=async()=>({...defaults,...await json(path.join(DATA,'settings.json'
 const classDir=id=>{if(!/^Week_[\w\-\u0080-\uffff]+$/.test(id)||id.includes('..'))throw Error('无效项目 ID。');return path.join(DATA,'classes',id);};
 const getClass=async id=>{classDir(id);const pending=await weekJournal(DATA,id);if(pending)return pendingProject(pending);const p=await json(path.join(classDir(id),'project.json'),null);if(!p)throw Error('课程不存在。');return migrateWeek(p);};
 const projectWrites=new Map();
+// Server push (GET /api/events, docs/API.md): every open page keeps one event stream and is told
+// when a course changed, so it reloads only that course instead of polling. Every course write goes
+// through writeProject; requests that may add, rename or remove courses also announce the list.
+const listeners=new Set();
+function broadcast(event){
+ const line='data: '+JSON.stringify(event)+'\n\n';
+ for(const res of listeners){try{res.write(line);}catch{listeners.delete(res);}}
+}
+setInterval(()=>{for(const res of listeners){try{res.write(': keep-alive\n\n');}catch{listeners.delete(res);}}},25000).unref();
+// Which run of a task was acknowledged ("知道了"); the frontend compares with the same rule.
+const taskRun=t=>String(t?.finished||t?.started||'')+'|'+(t?.error||'');
 function writeProject(id,change){
  if(!projectWrites.has(id))projectWrites.set(id,serialWriter());
  const file=path.join(classDir(id),'project.json');
- return projectWrites.get(id)(async()=>save(file,change(await json(file,null))));
+ return projectWrites.get(id)(async()=>{const value=change(await json(file,null)),saved=await save(file,value);broadcast({type:'course',id,revision:value?.revision??null});return saved;});
 }
 const putClass=(p,{replaceChat=false}={})=>{
  const snapshot=JSON.parse(JSON.stringify(p));
@@ -143,7 +156,7 @@ const materialWrites=new Map();
 const materialParser=aiMaterialService({root:ROOT,getClass,dirFor:classDir,previews,pageCache,mutate(id,change){if(!materialWrites.has(id))materialWrites.set(id,serialWriter());return materialWrites.get(id)(async()=>{const p=await getClass(id);change(p);await putClass(p);});}});
 function mergeSettings(saved,input){const s={...saved};for(const key of Object.keys(defaults))if(key in input){if(['apiKey','parseApiKey','fallbackApiKey','mineruKey','mineruToken'].includes(key)&&input[key]==='')continue;s[key]=input[key];}s.modelProfiles=mergeModelProfiles(saved,input);if(input.clearApiKey)s.apiKey='';if(input.clearParseApiKey)s.parseApiKey='';if(input.clearFallbackApiKey)s.fallbackApiKey='';if(input.clearMineruKey)s.mineruKey='';if(input.clearMineruToken)s.mineruToken='';return s;}
 async function classes(){const results=[];for(const d of await readdir(path.join(DATA,'classes'),{withFileTypes:true})){if(d.isDirectory()){const p=await json(path.join(DATA,'classes',d.name,'project.json'),null);if(p)results.push(migrateWeek(p));}}for(const pending of await pendingWeeks(DATA)){const index=results.findIndex(p=>p.id===pending.id),value=pendingProject(pending);if(index<0)results.push(value);else results[index]=value;}return results.sort((a,b)=>b.created.localeCompare(a.created));}
-for(const p of await classes()){await recoverMaterialCommits(classDir(p.id),async change=>{const current=await getClass(p.id);change(current);await putClass(current);Object.assign(p,current);});if(p.weekDeletionPending||await materialDeleteJournal(classDir(p.id)))continue;for(const f of p.files)if(f.aiParse?.status==='running'){f.aiParse.status='interrupted';f.aiParse.stage='上次解析被中断，可继续';f.aiParse.tasks={};f.progress='解析中断，可继续';}await migrateSourceNames(p,classDir(p.id),putClass);await migrateOutputs(p,classDir(p.id),putClass);const pending=await json(path.join(classDir(p.id),'.session-delete.json'),null);if(pending){p.deletionPending={sessionId:pending.sessionId,summary:pending.summary};p.status='error';p.stage='课堂删除未完成';}if(p.status==='running'){for(const f of p.files)if(f.parseStatus==='running'&&p.tasks?.[taskKey('reading',f.id)]?.status==='running'){f.parseStatus=f.parsed?'ready':'pending';delete f.progress;}for(const task of Object.values(p.tasks||{}))if(task.status==='running'){task.status='interrupted';task.error='Previous task was interrupted; saved results are available.';}p.status='interrupted';p.stage='上次处理被中断；原始材料和已有输出已保留，可重新处理。';}await recoverMineruArchives(p,classDir(p.id),putClass);await putClass(p);await migrateReadingCitations(p,classDir(p.id));}
+for(const p of await classes()){await recoverMaterialCommits(classDir(p.id),async change=>{const current=await getClass(p.id);change(current);await putClass(current);Object.assign(p,current);});if(p.weekDeletionPending||await materialDeleteJournal(classDir(p.id)))continue;for(const f of p.files)if(f.aiParse?.status==='running'){f.aiParse.status='interrupted';f.aiParse.stage='上次解析被中断，可继续';f.aiParse.tasks={};f.progress='解析中断，可继续';}await migrateSourceNames(p,classDir(p.id),putClass);await migrateOutputs(p,classDir(p.id),putClass);const pending=await json(path.join(classDir(p.id),'.session-delete.json'),null);if(pending){p.deletionPending={sessionId:pending.sessionId,summary:pending.summary};p.status='error';p.stage='课堂删除未完成';}if(p.status==='running'){for(const f of p.files)if(f.parseStatus==='running'&&p.tasks?.[taskKey('reading',f.id)]?.status==='running'){f.parseStatus=f.parsed?'ready':'pending';delete f.progress;}for(const task of Object.values(p.tasks||{}))if(task.status==='running'){task.status='interrupted';task.error='Previous task was interrupted; saved results are available.';}p.status='interrupted';p.stage='上次处理被中断；原始材料和已有输出已保留，可重新处理。';}await recoverMineruArchives(p,classDir(p.id),putClass);await migrateDoubtCounts(p,classDir(p.id));await putClass(p);await migrateReadingCitations(p,classDir(p.id));}
 async function updateStage(p,text){p.stage=text;p.updated=new Date().toISOString();await putClass(p);}
 async function run(p,settings,{origin,fresh=false,mode='preparation',sessionId,sessionIds,sourceId,referenceProvider,signal,onProgress}={}){
  const dir=classDir(p.id);let model;const warnings=[],usedModels={};
@@ -282,6 +295,10 @@ const server=http.createServer(async(req,res)=>{
   const host=req.headers.host;if(!/^127\.0\.0\.1:\d+$/.test(host||''))return respond(res,403,{error:'只允许本机访问。'});
   if(req.headers.origin&&req.headers.origin!==`http://${host}`)return respond(res,403,{error:'拒绝跨站请求。'});
   const url=new URL(req.url,`http://${host}`),parts=url.pathname.split('/').filter(Boolean),method=req.method;
+  if(url.pathname==='/api/events'&&method==='GET'){
+   res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});
+   res.write('retry: 3000\n\n');listeners.add(res);req.on('close',()=>listeners.delete(res));return;
+  }
   if(parts[0]==='api'&&parts[1]==='parse-resource'&&method==='GET'){
    const resource=materialParser.resource(parts[2]);if(!resource)return respond(res,404,{error:'渲染资源已失效'});
    if(parts[3]==='native')return respond(res,200,resource.nativeParts);
@@ -440,7 +457,7 @@ const server=http.createServer(async(req,res)=>{
        interaction.status('preparing','准备当前页原图和原生文本');
        const {seed,bytes,sourceHash:hash,renderKey}=await pageCache.page(dir,file,s,{origin:url.origin,index:b.pageIndex,signal:job.signal});
        const input={page:b.pageIndex+1,source:file.name,nativeText:seed.nativeText||'',speakerNotes:seed.speakerNotes||'',hidden:!!seed.hidden,renderWarnings:seed.warnings||[],responseContract:PPT_CONTENT_SCHEMA};
-       const raw=await complete(selected,await skill('ppt_learning'),JSON.stringify(input),{...interaction,json:true,images:['data:image/png;base64,'+bytes.toString('base64')]});
+       const raw=await complete(selected,(await doubtRules(ROOT))(await skill('ppt_learning')),JSON.stringify(input),{...interaction,json:true,images:['data:image/png;base64,'+bytes.toString('base64')]});
        job.signal.throwIfAborted();
        const page=draftToPage(normalizePptDraft(parseJson(raw)),{fileName:file.name,format:path.extname(file.name).slice(1).toLowerCase(),sha256:hash},input);
        inspectRecognition(page,seed,renderKey);
@@ -472,6 +489,27 @@ const server=http.createServer(async(req,res)=>{
     await materialParser.start(id,f.id,settings,options);return respond(res,202,{started:true});
    }
    if(action==='ai-parse-cancel'&&method==='POST'){const b=await payload(req);materialParser.cancel(id,b.sourceId);return respond(res,200,{ok:true});}
+   // Marks one hint of one page as checked against the original page (or undoes it). The hint
+   // must be one the page actually has; the parse result itself is not changed. Other background
+   // work (e.g. drawing original pages) does not block it: only this file's own counters change.
+   // "知道了" for a failed or stopped task: kept on the task itself, so every device agrees. It
+   // records which run was acknowledged; a later run that fails again shows up again.
+   if(action==='task-dismiss'&&method==='POST'){
+    const b=await payload(req),key=String(b.key||''),task=p.tasks?.[key];
+    if(!task||!['error','partial'].includes(task.status))throw Error('只能确认失败或停止的任务。');
+    await writeProject(id,latest=>{const t=latest.tasks?.[key];if(t)t.dismissed=taskRun(t);latest.revision=(latest.revision||0)+1;return latest;});
+    return respond(res,200,{key,dismissed:taskRun(task)});
+   }
+   if(action==='hint-check'&&method==='POST'){
+    if(p.weekDeletionPending)throw Error('本周正在删除。');const b=await payload(req),f=p.files.find(f=>f.id===b.sourceId&&f.aiParse);if(!f)throw Error('材料没有 AI 解析结果。');
+    if(f.aiParse.status==='running')throw Error('这份材料正在解析，完成后再核对。');
+    const checkpoint=await json(checkpointFile(dir,f),null),page=checkpoint?.pages?.find(x=>x?.page===Number(b.page));
+    if(!page||typeof b.hint!=='string'||!pageHints(page).includes(b.hint))throw Error('这一页没有这条提示。');
+    const checks=await setHintCheck(dir,f.id,page.page,b.hint,b.checked!==false);
+    const summary=doubtSummary(checkpoint,f.role==='ppt',checks);
+    await writeProject(id,latest=>{const g=latest.files?.find(x=>x.id===f.id);if(g?.aiParse)Object.assign(g.aiParse,summary);latest.revision=(latest.revision||0)+1;return latest;});
+    return respond(res,200,{sourceId:f.id,page:page.page,checked:checks[String(page.page)]||[],hints:summary.hints});
+   }
    if(action==='ai-partial'&&method==='GET')return respond(res,200,await materialParser.partial(id,url.searchParams.get('source')));
    if(action==='ai-partial-import'&&method==='POST'){editable(id);const b=await payload(req);if(b.confirm!==true)throw Error('请明确确认使用部分结果。');await materialParser.acceptPartial(id,b.sourceId);return respond(res,200,await getClass(id));}
    if(action==='page-image'&&method==='GET'){
@@ -547,7 +585,11 @@ const server=http.createServer(async(req,res)=>{
      if(!pages?.length)pages=f.parsed?(await pptPages(dir,f)).map(page=>({sourceId:f.id,source:f.name,pageIndex:page.pageIndex,paragraphs:bodyParagraphs(page).map(english=>({english,chinese:''})),closeReading:'',inspection:page.externalInspection})):[];
      let renderKey=null,previewIssue='';try{renderKey=(await pageCache.describe(dir,f,await config())).renderKey;}catch(e){previewIssue=e.message;}
      pages=pages.map(page=>({...page,closeReading:compactCoursewareCitations(page.closeReading||'',p.files),learningStale:!!(page.closeReading||page.paragraphs?.some(p=>p.chinese))&&(!page.renderKey||page.renderKey!==renderKey)}));
-     return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,review:f.aiParse?.review||null,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
+     // Each page's hints (doubts from parsing) and whether the reader has checked them; file-wide notes once.
+     const checkpoint=f.aiParse?await json(checkpointFile(dir,f),null):null,checks=checkpoint?await readHintChecks(dir,f.id):{};
+     if(checkpoint)pages=pages.map(page=>{const own=checkpoint.pages?.find(x=>x?.page===page.pageIndex+1),done=checks[String(page.pageIndex+1)]||[];return own?{...page,hints:pageHints(own).map(text=>({text,checked:done.includes(text)}))}:page;});
+     const notes=checkpoint?deckNotes(checkpoint):[];
+     return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,review:f.aiParse?.review||null,notes,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
     }
    }
    if(action==='session-delete-plan'&&method==='GET')return respond(res,200,(await deletionPlan(p,url.searchParams.get('session'),dir)).summary);
@@ -678,11 +720,13 @@ const server=http.createServer(async(req,res)=>{
   // Standalone pages' scripts and styles: page rendering (parse-render, pptx-frame) and the citation viewer.
   if(method==='GET'&&['/parse-render.js','/render-audit.js','/pptx-frame.js','/reading-reference.js','/reading-reference.css'].includes(url.pathname)){const file=url.pathname.slice(1);res.writeHead(200,{'Content-Type':file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.css')?'text/css':'text/javascript','Content-Security-Policy':"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; object-src 'none'; frame-src 'self'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff'});return res.end(await readFile(path.join(ROOT,'public',file)));}
   respond(res,404,{error:'未找到页面。'});
- }catch(e){respond(res,400,{error:e.message});}finally{if(lockedId){requestLocks.delete(lockedId);deletingMaterials.delete(lockedId);}}
+ }catch(e){respond(res,400,{error:e.message});}finally{if(lockedId){requestLocks.delete(lockedId);deletingMaterials.delete(lockedId);}if(!['GET','HEAD'].includes(req.method)&&/^\/api\/projects(\/|$)/.test(req.url||''))broadcast({type:'list'});}
 });
 server.requestTimeout=0;
 const port=Number(process.env.PORT||4317);
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`Port ${port} is already in use. Close the existing app or set PORT to another port.`:e.message);process.exitCode=1;});
 server.requestTimeout=30*60*1000;
 for(const event of ['SIGINT','SIGTERM'])process.once(event,async()=>{const guard=setTimeout(()=>process.exit(0),4000);guard.unref();await Promise.all([previewJobs.close(),acpJobs.close(),chatgptJobs.close(),chatgptBatchJobs.close()]);await acpRuntime.disconnect();process.exit(0);});
-server.listen(port,'127.0.0.1',()=>{const address=`http://127.0.0.1:${server.address().port}`;console.log(`Classroom Local: ${address}\nKeep this window open. Ctrl+C to stop.\nData: ${DATA}`);if(process.argv.includes('--open')&&process.platform==='win32')spawn('explorer.exe',[address],{windowsHide:true,stdio:'ignore'});});
+// A random port (PORT=0, used by the tests) that browsers and fetch refuse (lib/ports.mjs) is drawn again.
+function start(){server.listen(port,'127.0.0.1',()=>{if(port===0&&UNSAFE_PORTS.has(server.address().port)){server.close(()=>start());return;}const address=`http://127.0.0.1:${server.address().port}`;console.log(`Classroom Local: ${address}\nKeep this window open. Ctrl+C to stop.\nData: ${DATA}`);if(process.argv.includes('--open')&&process.platform==='win32')spawn('explorer.exe',[address],{windowsHide:true,stdio:'ignore'});});}
+start();

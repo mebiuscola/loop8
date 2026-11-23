@@ -93,6 +93,8 @@
 
 <svelte:window onclick={outside} onkeydown={e=>{if(e.key==='Escape')menuOpen=false;}}/>
 
+<!-- The layout follows the width of the work area (sidebar and Ask panel included), not the window. -->
+<div class="fit">
 <div class="dive">
  <nav class="list" aria-label="Deep Dive 清单">
   <a href={href('week')} class:on={isWeek} aria-current={isWeek?'page':undefined}>
@@ -182,15 +184,18 @@
     <p class="loading">正在读取…</p>
    {:else}
     <article class="doc">
-     <p class="kind">AI 分析{status.kind==='stale'?' · 基于旧版本，建议更新':''}</p>
+     <!-- Whether it is outdated is said once, by the status next to the title and its update button. -->
+     <p class="kind">AI 分析</p>
      <RichText text={doc} {project} variant="doc"/>
     </article>
    {/if}
   </div>
  </section>
 </div>
+</div>
 
 <style>
+ .fit{height:100%;min-height:0;container-type:inline-size;}
  .dive{display:grid;grid-template-columns:240px minmax(0,1fr);height:100%;min-height:0;}
  .list{display:flex;flex-direction:column;gap:2px;padding:var(--space-3) var(--space-2);border-right:1px solid var(--line);background:var(--bg-surface);overflow:auto;}
  .list a{display:flex;justify-content:space-between;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);color:var(--fg-muted);text-decoration:none;font-size:var(--text-sm);}
@@ -235,7 +240,8 @@
  .empty h2{font-size:var(--text-lg);margin-bottom:var(--space-2);}
  .empty p{color:var(--fg-muted);}
  .loading{padding:var(--space-5);color:var(--fg-muted);}
- @media (max-width:760px){
+ /* A narrow work area: the list becomes one scrollable row above the content. */
+ @container (max-width:820px){
   .dive{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);}
   .list{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:var(--space-2);}
   .list a{flex:none;}

@@ -5,6 +5,7 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import {listenSafe} from '../lib/ports.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 test('independent transcript and Deep Dive tasks preserve readable outputs and retry analysis without reconstructing or translating',async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-stages-'));let base,route,sessionId,fail=true,rebuild=0,translation=0,dive=0,readDuringDive=0;
@@ -16,7 +17,7 @@ test('independent transcript and Deep Dive tasks preserve readable outputs and r
   else if(system.includes('Weekly synthesis'))answer='## Weekly analysis';
   else if(system.includes('Ask this class'))answer='Student discussion is in the available transcript.';
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:answer}}]}));
- });await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ });await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:dir,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
   for(let i=0;i<100&&!log.includes('http://');i++)await sleep(30);base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);

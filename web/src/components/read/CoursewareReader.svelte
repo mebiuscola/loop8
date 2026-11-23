@@ -5,7 +5,9 @@
  import type {PdfDoc} from '../../lib/pdf';
  import {boldParts} from '../../lib/reading';
 
- let {projectId,reader,columns,jump,onpage,mode='cached',pdf=null,pptx=null,reload=0,onenlarge,pageCount=0}:{projectId:string;reader:CoursewareReader;columns:{original:boolean;translation:boolean;notes:boolean};jump:{page:number;seq:number};onpage:(n:number)=>void;
+ let {projectId,reader,columns,jump,onpage,mode='cached',pdf=null,pptx=null,reload=0,onenlarge,pageCount=0,oncheck}:{projectId:string;reader:CoursewareReader;columns:{original:boolean;translation:boolean;notes:boolean};jump:{page:number;seq:number};onpage:(n:number)=>void;
+  /** Marks a parse hint of a page as checked against the original (or undoes it). */
+  oncheck?:(page:number,hint:string,checked:boolean)=>Promise<void>;
   mode?:PreviewMode;pdf?:Promise<PdfDoc>|null;pptx?:Promise<ArrayBuffer>|null;reload?:number;onenlarge?:(pageIndex:number)=>void;
   /** Pages in the original file; before any parsing the original pages are still shown. */
   pageCount?:number}=$props();
@@ -46,6 +48,12 @@
   jumpTop=scroller.scrollTop;
  });
 
+ // Hints are doubts from parsing; they do not mean the page is unfinished. Checked ones fold away.
+ let busyHint=$state('');
+ async function check(page:number,hint:string,checked:boolean){
+  if(!oncheck)return;busyHint=page+'|'+hint;
+  try{await oncheck(page,hint,checked);}finally{busyHint='';}
+ }
  const pageTypeLabel:Record<string,string>={cover:'封面',agenda:'目录',section:'章节页',content:'',quote:'引文',image:'图片',ending:'结尾'};
 </script>
 
@@ -96,6 +104,20 @@
      </div>
     {/if}
    </div>
+   {#if p.hints?.length}
+    {@const open=p.hints.filter(h=>!h.checked)}
+    <details class="hints" class:done={!open.length}>
+     <summary>{open.length?'解析提示 '+open.length+' 条 · 可对照原页核对':'解析提示已全部核对（'+p.hints.length+' 条）'}</summary>
+     <ul>
+      {#each p.hints as h (h.text)}
+       <li class:checked={h.checked}>
+        <span>{h.text}</span>
+        {#if oncheck}<button type="button" class="btn btn-quiet" disabled={busyHint===n+'|'+h.text} onclick={()=>check(n,h.text,!h.checked)}>{h.checked?'撤销':'已核对'}</button>{/if}
+       </li>
+      {/each}
+     </ul>
+    </details>
+   {/if}
   </section>
  {/each}
 </div>
@@ -120,4 +142,11 @@
  .notes{margin:0;padding-left:var(--space-3);border-left:2px solid var(--kind-analysis);white-space:pre-wrap;font-size:var(--text-sm);line-height:1.7;}
  .missing{margin:0;font-size:var(--text-sm);color:var(--fg-subtle);}
  .empty{padding:var(--space-5) 0;color:var(--fg-muted);}
+ .hints{margin-top:var(--space-2);font-size:var(--text-xs);color:var(--status-stopped-fg);}
+ .hints.done{color:var(--fg-subtle);}
+ .hints summary{cursor:pointer;width:max-content;}
+ .hints ul{list-style:none;margin:var(--space-1) 0 0;padding:0;display:flex;flex-direction:column;gap:var(--space-1);}
+ .hints li{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);background:var(--bg-raised);color:var(--fg-muted);}
+ .hints li.checked span{text-decoration:line-through;color:var(--fg-subtle);}
+ .hints li .btn{flex:none;height:24px;padding:0 var(--space-2);font-size:var(--text-xs);}
 </style>

@@ -15,10 +15,10 @@ export function taskStatus(task:Task):StatusKind{
 }
 
 /** One dot per course in the sidebar: running beats problems beats ready. */
-export function courseStatus(p:ProjectSummary):'running'|'attention'|'ready'{
- const tasks=Object.values(p.tasks||{});
- if(p.status==='running'||tasks.some(t=>t.status==='running'))return 'running';
- if(tasks.some(t=>['error','partial'].includes(t.status)))return 'attention';
+export function courseStatus(p:ProjectSummary,dismissed:(key:string,task:Task)=>boolean=()=>false):'running'|'attention'|'ready'{
+ const tasks=Object.entries(p.tasks||{});
+ if(p.status==='running'||tasks.some(([,t])=>t.status==='running'))return 'running';
+ if(tasks.some(([k,t])=>['error','partial'].includes(t.status)&&!dismissed(k,t)))return 'attention';
  return 'ready';
 }
 

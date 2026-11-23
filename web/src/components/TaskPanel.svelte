@@ -28,12 +28,15 @@
      </div>
      <div class="side">
       <StatusBadge kind={t.kind} text={t.kind==='done'?statusWord.done+' · '+when(t.time):undefined}/>
-      <a class="btn btn-quiet" href={courseHref(t.courseId,'overview')} onclick={onclose}>去看看</a>
+      <div class="row-actions">
+       {#if t.kind==='failed'||t.kind==='stopped'}<button class="btn btn-quiet" onclick={e=>{e.stopPropagation();store.dismiss(t);}} title="从列表中移除；材料或课堂旁的状态和继续按钮不变">知道了</button>{/if}
+       <a class="btn btn-quiet" href={courseHref(t.courseId,'overview')} onclick={onclose}>去看看</a>
+      </div>
      </div>
     </li>
    {/each}
   </ul>
-  <p class="note">停止或继续：点"去看看"，在对应的材料、课堂或 Deep Dive 旁操作。</p>
+  <p class="note">停止或继续：点"去看看"，在对应的材料、课堂或 Deep Dive 旁操作。"知道了"只把失败或停止的任务从这里移除，再次运行后仍会显示。</p>
  {:else}
   <p class="empty">没有正在运行或需要处理的任务。</p>
  {/if}
@@ -54,6 +57,7 @@
  .detail{margin-top:2px;font-size:var(--text-xs);color:var(--fg-muted);overflow-wrap:anywhere;}
  li.failed .detail{color:var(--status-failed-fg);}
  li.stopped .detail{color:var(--status-stopped-fg);}
+ .row-actions{display:flex;gap:var(--space-1);}
  .side{display:flex;flex-direction:column;align-items:flex-end;gap:var(--space-1);flex:none;}
  .empty,.note{margin:0;padding:var(--space-4);font-size:var(--text-sm);color:var(--fg-muted);}
  .note{padding-top:var(--space-2);font-size:var(--text-xs);}

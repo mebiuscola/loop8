@@ -23,14 +23,19 @@
 
  type Kind='ppt'|'ref';
  // rest = "<ppt|ref>/<sourceId>/p/<page>"
- const parsed=$derived.by(()=>{
-  const [kind,sourceId,,page]=rest.split('/');
-  return {kind:(kind==='ref'?'ref':'ppt') as Kind,sourceId:sourceId||'',page:Math.max(1,Number(page)||1)};
- });
+ // Each part of the address is its own plain value, so a refresh of the course data (which now
+ // arrives whenever anything in the course is saved) never counts as a change of address and
+ // never sends the reader back to the page first named in it.
+ const parts=$derived(rest.split('/'));
+ const urlKind=$derived(parts[0]);
+ const sourceId=$derived(parts[1]||'');
+ const urlPage=$derived(Math.max(1,Number(parts[3])||1));
+ // Without a kind in the address, open courseware, or the references when the week has none.
+ const fallbackKind=$derived<Kind>(project.files.some(f=>f.role==='ppt')||!project.files.some(f=>f.role==='reading')?'ppt':'ref');
  const files=$derived({ppt:project.files.filter(f=>f.role==='ppt'),ref:project.files.filter(f=>f.role==='reading')});
- const kind=$derived(parsed.kind);
+ const kind=$derived<Kind>(urlKind==='ref'||urlKind==='ppt'?urlKind:fallbackKind);
  const list=$derived(files[kind]);
- const file=$derived(list.find(f=>f.id===parsed.sourceId)||list[0]||null);
+ const file=$derived(list.find(f=>f.id===sourceId)||list[0]||null);
 
  const href=(k:Kind,sourceId?:string,page=1)=>courseHref(project.id,'read',k+(sourceId?'/'+encodeURIComponent(sourceId)+'/p/'+page:''));
 
@@ -76,8 +81,10 @@
  // Page position: the reader reports the page in view; we record it in the URL and offer it to Ask.
  let page=$state(1),pageCount=$state(0),seq=0;
  let jump=$state<{page:number;seq:number}>({page:1,seq:0});
- $effect(()=>{const p=parsed.page;page=p;jump={page:p,seq:++seq};});
+ $effect(()=>{const p=urlPage;page=p;jump={page:p,seq:++seq};});
  const total=$derived(current?(kind==='ppt'?Math.max((current as CR).pages.length,(current as CR).nativePageCount||0,preview?.status?.pages||0):pageCount):0);
+ // The printed page number of the reference page in view, next to the PDF page number.
+ const printed=$derived(kind==='ref'&&current?(current as RR).paragraphs.find(p=>p.pageIndex===page-1&&p.printedPage)?.printedPage||'':'');
  function onPage(n:number){
   page=n;
   if(file)router.remember(href(kind,file.id,n));
@@ -111,6 +118,12 @@
   finally{starting=false;}
  }
 
+ async function checkHint(n:number,hint:string,checked:boolean){
+  if(!file)return;actionError='';
+  try{await api.hintCheck(project.id,file.id,n,hint,checked);await load('ppt',file.id,true);store.refresh();}
+  catch(e){actionError=e instanceof ApiError?e.message:String(e);}
+ }
+
  let menuOpen=$state(false);
  let menuWrap:HTMLElement;
  function outside(event:MouseEvent){if(menuOpen&&menuWrap&&!menuWrap.contains(event.target as Node))menuOpen=false;}
@@ -138,12 +151,13 @@
 
   {#if list.length}
    <select aria-label="选择材料" value={file?.id} onchange={e=>router.go(href(kind,(e.currentTarget as HTMLSelectElement).value))}>
-    {#each list as f (f.id)}<option value={f.id}>{f.name} — {statusOf(kind,f.id).text}</option>{/each}
+    {#each list as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
    </select>
    <div class="pager" aria-label="翻页">
     <button class="btn btn-quiet icon" onclick={()=>goPage(page-1)} disabled={page<=1} title="上一页"><Icon name="chevron-left" size={16}/></button>
     <input aria-label="页码" type="number" min="1" max={total||1} value={page} onchange={e=>goPage(Number((e.currentTarget as HTMLInputElement).value))}/>
     <span>/ {total||'–'}</span>
+    {#if printed}<span class="printed" title="书上印的页码">印刷页 {printed}</span>{/if}
     <button class="btn btn-quiet icon" onclick={()=>goPage(page+1)} disabled={!total||page>=total} title="下一页"><Icon name="chevron-right" size={16}/></button>
    </div>
    <fieldset class="cols" aria-label="显示">
@@ -185,6 +199,7 @@
     {@const n=(current as CR).pages.filter(p=>p.learningStale).length}
     <span class="note">原页渲染方式更新过，{n} 页的导读是按旧版原页生成的，内容通常仍可用。</span>
    {/if}
+   {#each kind==='ppt'&&current?(current as CR).notes||[]:[] as note (note)}<span class="note">{note}。安装这些字体后，原页显示会更准确。</span>{/each}
    {#if kind==='ppt'&&current&&(current as CR).previewIssue}<span class="note">原页预览：{(current as CR).previewIssue}</span>{/if}
    {#if kind==='ref'&&current&&(current as RR).sourceWarnings?.missingPages?.length}<span class="note">有 {(current as RR).sourceWarnings!.missingPages!.length} 页原文未能解析</span>{/if}
    {#if kind==='ppt'&&list.length>1&&action}<span class="note">课件导读按整周生成，会处理本周全部课件。</span>{/if}
@@ -206,7 +221,7 @@
   {:else if kind==='ppt'}
    {#key file?.id}
     <CoursewareReader projectId={project.id} reader={current as CR} columns={columns.ppt} {jump} onpage={onPage}
-     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} onenlarge={i=>openDialog('enlarge',i)}/>
+     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} onenlarge={i=>openDialog('enlarge',i)} oncheck={checkHint}/>
    {/key}
   {:else}
    {#key file?.id}
@@ -233,6 +248,7 @@
  .segmented a.on{background:var(--bg-raised);color:var(--fg);font-weight:var(--weight-medium);}
  select{min-width:0;max-width:360px;height:32px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);font-size:var(--text-sm);}
  .pager{display:flex;align-items:center;gap:var(--space-1);font-size:var(--text-sm);color:var(--fg-muted);}
+ .printed{margin-left:var(--space-1);white-space:nowrap;}
  .pager input{width:52px;height:28px;text-align:center;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);}
  .icon{width:32px;padding:0;justify-content:center;}
  .cols{display:flex;gap:var(--space-3);margin:0;padding:0;border:0;font-size:var(--text-sm);color:var(--fg-muted);}

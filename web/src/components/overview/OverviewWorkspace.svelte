@@ -61,10 +61,11 @@
   catch(err){classError=fail(err);}
   finally{classBusy=false;}
  }
- const chip=(on:boolean,label:string)=>({on,label});
+ // A generated but outdated result is shown in the "stale" colour without a tick.
+ const chip=(on:boolean,label:string,stale=false)=>({on,stale:on&&stale,label:on&&stale?label+(/[A-Za-z]$/.test(label)?' ':'')+'待更新':label});
  const chips=(s:Session)=>{
   const script=scriptStatus(project,s),dive=sessionDiveStatus(project,s);
-  return [chip(!!s.srtId,'字幕'),chip(!!s.audio,'录音'),chip(!!s.generation,script.kind==='stale'?'讲稿待更新':'讲稿'),chip(dive.kind==='done'||dive.kind==='stale','Deep Dive')];
+  return [chip(!!s.srtId,'字幕'),chip(!!s.audio,'录音'),chip(!!s.generation,'讲稿',script.kind==='stale'),chip(dive.kind==='done'||dive.kind==='stale','Deep Dive',dive.kind==='stale')];
  };
 
  // ---- dialogs: rename and two-step delete for a class or the whole week ----
@@ -101,6 +102,7 @@
  }
 
  const week=$derived(weekDiveStatus(project));
+ const weekEmpty=$derived(!project.sessions.length&&!project.files.some(f=>f.role==='ppt'||f.role==='reading'));
  const weekIncluded=$derived(weeklyAnalysis(project).available?(project.weekly?.selectedSessionIds?.length??0):null);
 </script>
 
@@ -166,7 +168,7 @@
     <div class="class-row">
      <span class="tag">{s.type==='Seminar'?'SEM':s.type==='Lecture'?'LEC':'—'}</span>
      <div class="name"><span class="title">{s.type} · {s.title}</span><small>{s.date||'未填日期'}</small></div>
-     <ul class="chips" aria-label="本节进度">{#each chips(s) as c (c.label)}<li class:on={c.on}>{c.label} {c.on?'✓':'–'}</li>{/each}</ul>
+     <ul class="chips" aria-label="本节进度">{#each chips(s) as c (c.label)}<li class:on={c.on&&!c.stale} class:stale={c.stale}>{c.label}{c.stale?'':c.on?' ✓':' –'}</li>{/each}</ul>
      <div class="act">
       {#if pending}<button class="btn" onclick={()=>openDeleteClass(s)}>继续删除</button>
       {:else}<a class="btn" href={courseHref(project.id,'class',encodeURIComponent(s.id))}>打开</a>{/if}
@@ -205,9 +207,15 @@
   <div class="box">
    <div class="class-row">
     <span class="tag">WK</span>
-    <div class="name"><span class="title">整周 Deep Dive</span><small>{weekIncluded===null?'可选择纳入哪些课堂':weekIncluded?'含 '+weekIncluded+' 节课':'仅本周材料'}</small></div>
-    <StatusBadge kind={week.kind} text={week.text}/>
-    <div class="act"><a class="btn" href={courseHref(project.id,'deepdive','week')}>打开</a></div>
+    <!-- The whole-week Deep Dive needs something to analyse: courseware, references or a class. -->
+    {#if weekEmpty}
+     <div class="name"><span class="title">整周 Deep Dive</span><small>先添加课件、参考文献或课堂</small></div>
+     <span></span><span></span>
+    {:else}
+     <div class="name"><span class="title">整周 Deep Dive</span><small>{weekIncluded===null?'可选择纳入哪些课堂':weekIncluded?'含 '+weekIncluded+' 节课':'仅本周材料'}</small></div>
+     <StatusBadge kind={week.kind} text={week.text}/>
+     <div class="act"><a class="btn" href={courseHref(project.id,'deepdive','week')}>打开</a></div>
+    {/if}
    </div>
   </div>
  </section>
@@ -261,6 +269,7 @@
  .chips{display:flex;flex-wrap:wrap;gap:var(--space-1);margin:0;padding:0;list-style:none;font-size:var(--text-xs);}
  .chips li{padding:1px var(--space-2);border-radius:999px;background:var(--status-idle-bg);color:var(--status-idle-fg);white-space:nowrap;}
  .chips li.on{background:var(--status-done-bg);color:var(--status-done-fg);}
+ .chips li.stale{background:var(--status-stale-bg);color:var(--status-stale-fg);}
  .act{display:flex;align-items:center;gap:var(--space-1);justify-content:flex-end;}
  .icon{width:32px;padding:0;justify-content:center;}
  .menu{position:relative;}

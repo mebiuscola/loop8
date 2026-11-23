@@ -14,15 +14,18 @@
  const read=(key:string,fallback:boolean)=>{try{const v=localStorage.getItem(key);return v===null?fallback:v==='1';}catch{return fallback;}};
  const write=(key:string,value:boolean)=>{try{localStorage.setItem(key,value?'1':'0');}catch{/* private mode */}};
 
- let sidebarCollapsed=$state(read('classroom.next.sidebarCollapsed',false));
+ const SIDEBAR_KEY='classroom.next.sidebarCollapsed';
+ let sidebarCollapsed=$state(read(SIDEBAR_KEY,false));
  let askOpen=$state(read('classroom.next.askOpen',false));   // collapsed by default (IA decision Q4)
- $effect(()=>write('classroom.next.sidebarCollapsed',sidebarCollapsed));
+ // On a narrow window the course list collapses by itself so the workspace keeps its width; it can
+ // still be opened with its own button. Only the user's own choice on a wide window is remembered,
+ // and it comes back when the window is wide again.
+ let narrowWindow=false;
+ $effect(()=>{const collapsed=sidebarCollapsed;if(!narrowWindow)write(SIDEBAR_KEY,collapsed);});
  $effect(()=>write('classroom.next.askOpen',askOpen));
- // On a narrow window the course list collapses by itself so the workspace keeps its width;
- // it can still be opened with its own button.
  onMount(()=>{
   const narrow=matchMedia('(max-width: 760px)');
-  const fit=()=>{if(narrow.matches)sidebarCollapsed=true;};
+  const fit=()=>{narrowWindow=narrow.matches;sidebarCollapsed=narrow.matches||read(SIDEBAR_KEY,false);};
   fit();narrow.addEventListener('change',fit);
   return ()=>narrow.removeEventListener('change',fit);
  });
@@ -55,7 +58,7 @@
    {:else if route.page==='course'}
     {#if store.currentError}
      <section class="message"><h1>无法打开课程</h1><p>{store.currentError}</p></section>
-    {:else if !store.current}
+    {:else if !store.current||store.current.id!==route.courseId}
      <p class="loading">正在打开课程…</p>
     {:else if route.workspace==='read'}
      <ReadWorkspace project={store.current} rest={route.rest}/>

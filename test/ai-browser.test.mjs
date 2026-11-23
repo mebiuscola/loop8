@@ -9,6 +9,7 @@ import os from 'node:os';
 import {testPdf} from '../lib/diagnostics.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {openApp,go,waitFor,waitText,click} from './helpers/app.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 test('real isolated browser renders PPTX and PDF, sends page images, imports valid JSON, keeps originals and hides parsing credentials',async t=>{
  try{await browserExecutable();}catch{return t.skip('Requires locally installed Edge / Chrome');}
@@ -21,7 +22,7 @@ test('real isolated browser renders PPTX and PDF, sends page images, imports val
   let result;if(visionTest)result={books:7,notes:4};
   else {const input=JSON.parse(text);requests.push({source:input.source,page:input.page,model:data.model,key:req.headers.authorization});if(input.source==='needs-backup.pdf'&&data.model!=='mock-fallback'||input.source==='partial.pdf'&&input.page===2){res.setHeader('content-type','application/json');return res.end(JSON.stringify({choices:[{finish_reason:'recitation',message:{content:''}}]}));}result=data.messages[0].content.includes('PPT integrated learning')?{title:'Rendered page '+input.page,blank:false,originalText:[{text:input.nativeText||'Visual page content',method:input.nativeText?'native':'visual_ocr',role:'body'}],visualObservations:[],analysis:[],uncertainties:[],inspection:{textExtracted:true,fullPageViewed:true,status:'complete'},learning:{schema:'classroom.ppt-learning.v1',pageType:'concept',paragraphs:[{originalIndex:0,chinese:'完整正文翻译'}],closeReading:'这页具体解释文字排版，不重复翻译。'}}:{printedPage:null,status:'complete',blocks:[{kind:'body',text:input.nativeText||'Classroom connection test'}],uncertainties:[]};}
   await sleep(80);res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]}));
- });await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ });await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:temp,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
   for(let i=0;i<100&&!log.includes('http://');i++)await sleep(50);const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);

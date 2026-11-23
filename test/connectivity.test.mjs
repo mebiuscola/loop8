@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {quickMineruCheck,curlHead,nodeHead} from '../lib/connectivity.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 const settings={mineruMode:'cloud',mineruToken:'test-key'};
 const signal=()=>AbortSignal.timeout(5000);
 test('quick check accepts expected missing task, probes OSS separately, sends no upload and marks limits',async()=>{
@@ -21,6 +22,6 @@ test('quick check falls back for network faults and reports API success separate
  await assert.rejects(()=>quickMineruCheck({...settings,mineruMode:'cli'},async()=>{},signal()),/CLI/);
 });
 for(const method of [curlHead,nodeHead])test(`${method.name} observes unsigned OSS-like 403 without credentials or uploads`,async()=>{
- const server=http.createServer((req,res)=>{assert.equal(req.method,'HEAD');assert.equal(req.headers.authorization,undefined);assert.equal(req.headers['content-length'],undefined);res.writeHead(403);res.end();});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const server=http.createServer((req,res)=>{assert.equal(req.method,'HEAD');assert.equal(req.headers.authorization,undefined);assert.equal(req.headers['content-length'],undefined);res.writeHead(403);res.end();});await listenSafe(server);
  try{const result=await method(`http://127.0.0.1:${server.address().port}/`,{signal:signal(),allowHttp:true});assert.equal(result.status,403);}finally{await new Promise(r=>server.close(r));}
 });
