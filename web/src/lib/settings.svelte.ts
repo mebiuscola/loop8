@@ -53,7 +53,7 @@ export class SettingsModel{
   this.assign={defaultId:s.defaultProfileId,modelRoutes:{...s.modelRoutes},fallbackProfileId:s.fallbackProfileId,fallbackEnabled:s.fallbackEnabled};
   this.mineru={mineruToken:'',clearMineruToken:false,mineruLanguage:s.mineruLanguage,uploadConcurrency:s.uploadConcurrency};
   this.preview={previewEngine:s.previewEngine,browserPath:s.browserPath,libreOfficePath:s.libreOfficePath};
-  this.advanced={contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput};
+  this.advanced={contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput,acpTrace:s.acpTrace===true};
  }
 
  // ---- Antigravity program ----
@@ -111,7 +111,7 @@ export class SettingsModel{
  get mineruDirty(){const s=this.saved!,m=this.mineru;return !!m.mineruToken||!!m.clearMineruToken||m.mineruLanguage!==s.mineruLanguage||Number(m.uploadConcurrency)!==s.uploadConcurrency;}
  get assignDirty(){const s=this.saved;if(!s)return false;return !same(this.assign,{defaultId:s.defaultProfileId,modelRoutes:s.modelRoutes,fallbackProfileId:s.fallbackProfileId,fallbackEnabled:s.fallbackEnabled});}
  get previewDirty(){const s=this.saved;return !!s&&!same(this.preview,{previewEngine:s.previewEngine,browserPath:s.browserPath,libreOfficePath:s.libreOfficePath});}
- get advancedDirty(){const s=this.saved;return !!s&&!same(this.advanced,{contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput});}
+ get advancedDirty(){const s=this.saved;return !!s&&!same(this.advanced,{contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput,acpTrace:s.acpTrace===true});}
 
  // ---- saving ----
  private async send(payload:SettingsSave){const next=await api.saveSettings(payload);this.saved=next;return next;}

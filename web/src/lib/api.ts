@@ -47,7 +47,7 @@ export type Provider='api'|'antigravity-acp'|'chatgpt-plan';
 export interface ModelProfile{id:string;name:string;provider?:Provider;connectionId?:string;baseUrl?:string;model:string;apiKey?:string;hasApiKey?:boolean;clearApiKey?:boolean;contextChars?:number;maxOutputTokens?:number;outputTokenField?:string;visionEnabled?:boolean;acpEntry?:'cli'|'standalone';acpExecutable?:string;acpThinking?:string;}
 export interface Settings{acpBundled:string;modelProfiles:ModelProfile[];modelRoutes:Record<string,string>;defaultProfileId:string;fallbackProfileId:string;fallbackEnabled:boolean;acpPaths:Record<string,string>;
  hasMineruToken:boolean;mineruLanguage:string;uploadConcurrency:number;previewEngine:string;browserPath:string;libreOfficePath:string;
- contextConcurrency:number;parseConcurrency:number;compactPptImages:boolean;chunkChars:number;structuredOutput:boolean;contextChars:number;maxOutputTokens:number;outputTokenField:string;visionEnabled:boolean;}
+ contextConcurrency:number;parseConcurrency:number;compactPptImages:boolean;chunkChars:number;structuredOutput:boolean;/** Save full Antigravity request logs (troubleshooting). */acpTrace?:boolean;contextChars:number;maxOutputTokens:number;outputTokenField:string;visionEnabled:boolean;}
 export type SettingsSave={section:'model';profile:ModelProfile;acpPaths?:Record<string,string>}|{section:'delete-model';profileId:string}|{section:'delete-connection';connectionId:string}|{section:'models';defaultProfileId:string}
  |{section:'routes';modelRoutes:Record<string,string>;fallbackProfileId:string;fallbackEnabled:boolean}|{section:'mineru'|'preview'|'advanced';[key:string]:unknown};
 /** Interactive job families with their own /api/<kind>/jobs endpoints (docs/API.md §7). */
@@ -77,6 +77,10 @@ const project=(id:string)=>'/api/projects/'+encodeURIComponent(id);
 export const api={
  /** Server push of course changes (GET /api/events). */
  eventsUrl:()=>'/api/events',
+ /** Full Antigravity request logs (docs/API.md). */
+ acpTraces:()=>request<{enabled:boolean;files:{name:string;size:number;at:string}[];totalBytes:number}>('/api/acp/traces'),
+ acpTraceUrl:(name:string)=>'/api/acp/traces/'+encodeURIComponent(name),
+ clearAcpTraces:()=>post<{deleted:number}>('/api/acp/traces-clear',{confirm:true}),
  taskDismiss:(id:string,key:string)=>post<{key:string;dismissed:string}>(project(id)+'/task-dismiss',{key}),
  listProjects:()=>request<ProjectSummary[]|{projects:ProjectSummary[]}>('/api/projects').then(r=>Array.isArray(r)?r:r.projects),
  getProject:(id:string)=>request<Project>(project(id)),

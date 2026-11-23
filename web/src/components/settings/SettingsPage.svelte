@@ -1,5 +1,6 @@
 <script lang="ts">
  import {onMount} from 'svelte';
+ import AcpTraces from './AcpTraces.svelte';
  import FieldList,{type Field} from './FieldList.svelte';
  import AccountCard from './AccountCard.svelte';
  import ApiCard from './ApiCard.svelte';
@@ -47,6 +48,7 @@
   {key:'chunkChars',label:'分段字符数',type:'number',min:1500,max:15000},
   {key:'structuredOutput',label:'使用结构化 JSON 输出（模型不支持时取消）',type:'checkbox'},
   {key:'compactPptImages',label:'压缩课件图片后再发送给模型',type:'checkbox'},
+  {key:'acpTrace',label:'保存 Antigravity 完整过程（排查问题用；含课程内容，只存在本机）',type:'checkbox'},
  ];
  const mineruTest=new JobRun();
  async function testMineru(kind:'mineru-connection'|'mineru'){
@@ -98,6 +100,7 @@
      <FieldList fields={previewFields} draft={model.preview}/>
     {:else}
      <FieldList fields={advancedFields} draft={model.advanced}/>
+     <AcpTraces enabled={model.saved?.acpTrace===true}/>
     {/if}
    {/if}
   </div>

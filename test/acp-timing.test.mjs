@@ -76,3 +76,28 @@ test('timings record how much each request sends (numbers only), so size can be 
   assert.match(describeAcpTiming(t),/发送 \d+ 字符/);
  }finally{console.log=quiet;await runtime.disconnect();}
 });
+
+test('with "保存 Antigravity 完整过程" on, every request leaves a full log; with it off, none',async()=>{
+ const {setAcpTraceDir,listTraces,tracePath,clearTraces}=await import('../lib/acp-trace.mjs');
+ const {mkdtemp,readFile,rm}=await import('node:fs/promises');const os=await import('node:os');const path=await import('node:path');
+ const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-trace-'));setAcpTraceDir(dir);
+ const runtime=mockRuntime(),quiet=console.log;console.log=()=>{};
+ try{
+  await runtime.run(settings,{user:'no log for this'});
+  assert.equal((await listTraces()).files.length,0,'off: nothing saved');
+  await runtime.run({...settings,acpTrace:true},{system:'Read the slide.',user:'first batch with a log',images:[png]});
+  const {files}=await listTraces();assert.equal(files.length,1);
+  const lines=(await readFile(tracePath(files[0].name),'utf8')).trim().split('\n').map(l=>JSON.parse(l));
+  assert.equal(lines[0].kind,'request');assert.match(lines[0].prompt,/first batch with a log/);assert.deepEqual(lines[0].images,[{type:'image/png',kb:0}]);
+  assert(lines.some(l=>l.kind==='agent_thought_chunk'&&/private thought/.test(JSON.stringify(l.data))),'thoughts are in the log');
+  assert(lines.some(l=>l.kind==='agent_message_chunk'),'the reply chunks are in the log');
+  const end=lines.at(-1);assert.equal(end.kind,'result');assert.equal(end.data.stopReason,'end_turn');assert(end.data.timing.total>=0);
+  // A failed request logs its error.
+  await runtime.run({...settings,acpTrace:true},{user:'use-tools on this slide',toolLimitMs:200}).catch(()=>{});
+  const failed=(await listTraces()).files.find(f=>f.name!==files[0].name);
+  const last=(await readFile(tracePath(failed.name),'utf8')).trim().split('\n').map(l=>JSON.parse(l)).at(-1);
+  assert.equal(last.kind,'error');assert.equal(last.data.category,'tool_timeout');
+  assert.throws(()=>tracePath('../settings.json'),/无效日志文件/);
+  assert.equal(await clearTraces(),2);assert.equal((await listTraces()).files.length,0);
+ }finally{console.log=quiet;await runtime.disconnect();setAcpTraceDir(null);await rm(dir,{recursive:true,force:true});}
+});
