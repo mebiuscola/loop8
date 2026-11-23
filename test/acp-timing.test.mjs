@@ -18,13 +18,14 @@ test('Antigravity requests record per-phase timing, and show when the program an
   assert(first&&second,'two timings recorded');
   assert.equal(first.reusedProcess,false);assert.equal(second.reusedProcess,true,'the program stays open between requests');
   assert.equal(first.reusedSession,false);assert.equal(second.reusedSession,true,'a text request of the same document reuses its session');
-  for(const phase of ['starting','initialize','session','prompt','generating'])assert(phase in first.phases,'first request has '+phase+': '+JSON.stringify(first.phases));
+  for(const phase of ['starting','initialize','session','prompt','thinking','generating'])assert(phase in first.phases,'first request has '+phase+': '+JSON.stringify(first.phases));
   assert(!('session' in second.phases),'a reused session is not created again');
   const sum=Object.values(first.phases).reduce((a,b)=>a+b,0);
   assert(Math.abs(sum-first.total)<0.01,'phases add up to the total');
   const text=describeAcpTiming(first);
   assert.match(text,/^耗时 \d+\.\d 秒：/);assert.match(text,/新启动 Antigravity 程序/);
   assert.match(describeAcpTiming(second),/沿用已打开的 Antigravity 程序，沿用会话/);
-  assert.doesNotMatch(JSON.stringify(acpTimings),/first batch|second batch/,'no request text is kept');
+  assert(first.thoughtUpdates>=1,'thoughts are counted');assert.equal(first.toolCalls,0);
+  assert.doesNotMatch(JSON.stringify(acpTimings),/first batch|second batch|private thought/,'no request, reply or thought text is kept');
  }finally{console.log=quiet;await runtime.disconnect();}
 });
