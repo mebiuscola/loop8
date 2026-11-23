@@ -584,6 +584,9 @@ const server=http.createServer(async(req,res)=>{
      if(f.externalAnalysis&&(!pages?.length||a?.materialRevision!==p.materialRevision)){
       const report=await json(path.join(dir,'Parsed',f.externalAnalysis),null);if(report?.learningSchema===LEARNING_SCHEMA&&report.source.sha256===sourceHash){learningReady=true;pages=report.pages.map(page=>page.learning?readerPage(page,f,sourceHash):({sourceId:f.id,source:f.name,pageIndex:page.page-1,sourceHash,paragraphs:[],closeReading:'本页尚未完成识别与学习，请补全失败页。',inspection:page.inspection}));}
      }
+     // Pages from the file's own page-by-page guide (learningReady) were made from this very original
+     // (checked by hash above); finishing them raises the week's material revision, so comparing with
+     // the older whole-week guide would call them outdated again forever. Only the original counts.
      if(!pages?.length)pages=f.parsed?(await pptPages(dir,f)).map(page=>({sourceId:f.id,source:f.name,pageIndex:page.pageIndex,paragraphs:bodyParagraphs(page).map(english=>({english,chinese:''})),closeReading:'',inspection:page.externalInspection})):[];
      let renderKey=null,previewIssue='';try{renderKey=(await pageCache.describe(dir,f,await config())).renderKey;}catch(e){previewIssue=e.message;}
      pages=pages.map(page=>({...page,closeReading:compactCoursewareCitations(page.closeReading||'',p.files),learningStale:!!(page.closeReading||page.paragraphs?.some(p=>p.chinese))&&(!page.renderKey||page.renderKey!==renderKey)}));
@@ -591,7 +594,7 @@ const server=http.createServer(async(req,res)=>{
      const checkpoint=f.aiParse?await json(checkpointFile(dir,f),null):null,checks=checkpoint?await readHintChecks(dir,f.id):{};
      if(checkpoint)pages=pages.map(page=>{const own=checkpoint.pages?.find(x=>x?.page===page.pageIndex+1),done=checks[String(page.pageIndex+1)]||[];return own?{...page,hints:pageHints(own).map(text=>({text,checked:done.includes(text)}))}:page;});
      const notes=checkpoint?deckNotes(checkpoint):[];
-     return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,review:f.aiParse?.review||null,notes,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
+     return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,review:f.aiParse?.review||null,notes,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!learningReady&&!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
     }
    }
    if(action==='session-delete-plan'&&method==='GET')return respond(res,200,(await deletionPlan(p,url.searchParams.get('session'),dir)).summary);
