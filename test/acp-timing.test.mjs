@@ -65,3 +65,14 @@ test('tool use past the limit stops the request, records the tool kind, and a re
   assert(acpTimings.some(t=>t.toolKinds?.search===1),'the kind of tool is recorded, not its query');
  }finally{console.log=quiet;await runtime.disconnect();}
 });
+
+test('timings record how much each request sends (numbers only), so size can be compared with waiting',async()=>{
+ const runtime=mockRuntime(),quiet=console.log;console.log=()=>{};
+ try{
+  await runtime.run(settings,{system:'Read the slide.',user:'echo-head size',images:[png]});
+  const t=acpTimings.at(-1);
+  assert(t.promptChars>100,'characters sent: '+t.promptChars);
+  assert(Number.isInteger(t.imageKB));
+  assert.match(describeAcpTiming(t),/发送 \d+ 字符/);
+ }finally{console.log=quiet;await runtime.disconnect();}
+});
