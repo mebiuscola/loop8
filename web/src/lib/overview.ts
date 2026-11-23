@@ -25,6 +25,12 @@ export function materialView(p:Project,f:SourceFile,reader?:CoursewareReader|Ref
  if(isPlainBb(f))return {kind:'done',text:'已保存',step:null};
 
  if(f.role==='ppt'){
+  // A guide run that stopped part-way (restart, stop, error) takes priority over whatever guide can be
+  // shown meanwhile (e.g. an older one), so it can always be continued from its saved pages.
+  if(ai?.status&&!['running','done'].includes(ai.status)){
+   const failed=ai.status==='error';
+   return {kind:failed?'failed':'stopped',text:(failed?'导读生成失败':'导读生成未完成')+(progressOf(f)?' · '+progressOf(f):''),step:{kind:'ai-parse',label:'继续生成导读'}};
+  }
   if(reader){
    const s=coursewareStatus(p,f,reader as CoursewareReader);
    if(s.kind==='done')return {...s,step:{kind:'read',label:'阅读'}};
