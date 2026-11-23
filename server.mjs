@@ -115,6 +115,39 @@ function startAcpWorkflow(work,batch){
  });
 }
 const readingJobs=id=>[...mineruJobs.values()].filter(job=>job.id===id&&!job.finished);
+// Reference translations started while the course is busy (another job is writing to it) wait here
+// and start by themselves when it is free (docs/API.md "排队"). The request is kept on the task too,
+// so a restart puts it back in the queue.
+const translationQueue=new Map();   // course id -> [{key,options}]
+const courseBusy=id=>active.has(id)||materialParser.busy(id)||pageCache.busy(classDir(id))||readingJobs(id).length>0;
+async function enqueueTranslation(id,options){
+ const key=taskKey('reference',options.sourceId),list=translationQueue.get(id)||[];
+ if(!list.some(item=>item.key===key))list.push({key,options:{mode:'reference',sourceId:options.sourceId,...(options.referenceProfileId?{referenceProfileId:options.referenceProfileId}:{})}});
+ translationQueue.set(id,list);
+ await writeProject(id,latest=>{latest.tasks||={};latest.tasks[key]={status:'queued',stage:'排队中：前面的任务完成后自动开始',queued:new Date().toISOString(),request:list.find(item=>item.key===key).options};latest.revision=(latest.revision||0)+1;return latest;});
+ return getClass(id);
+}
+async function cancelQueuedTranslation(id,key){
+ const list=(translationQueue.get(id)||[]).filter(item=>item.key!==key);if(list.length)translationQueue.set(id,list);else translationQueue.delete(id);
+ await writeProject(id,latest=>{const t=latest.tasks?.[key];if(t?.status==='queued')latest.tasks[key]={status:'error',error:'已取消排队。',finished:new Date().toISOString()};latest.revision=(latest.revision||0)+1;return latest;});
+}
+let queueTicking=false;
+async function startQueuedTranslations(){
+ if(queueTicking)return;queueTicking=true;
+ try{
+  for(const [id,list] of translationQueue){
+   if(!list.length){translationQueue.delete(id);continue;}
+   if(courseBusy(id))continue;
+   const next=list.shift();if(!list.length)translationQueue.delete(id);
+   // Started through the normal endpoint, so every check of a direct start still applies.
+   try{
+    const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/projects/'+encodeURIComponent(id)+'/process',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(next.options)});
+    if(!r.ok){const message=(await r.json().catch(()=>({}))).error||'排队的翻译没能开始。';await writeProject(id,latest=>{if(latest.tasks?.[next.key]?.status==='queued')latest.tasks[next.key]={status:'error',error:message,finished:new Date().toISOString()};return latest;});}
+   }catch(e){console.error('Queued translation failed to start:',e.message);}
+  }
+ }finally{queueTicking=false;}
+}
+setInterval(()=>{void startQueuedTranslations();},2000).unref();
 const readingKey=(id,sourceId)=>JSON.stringify([id,sourceId]);
 function editableSource(id,sourceId){
  if(mineruJobs.has(readingKey(id,sourceId)))throw Error('此文件正在由 MinerU 处理，请稍后修改。');
@@ -156,7 +189,7 @@ const materialWrites=new Map();
 const materialParser=aiMaterialService({root:ROOT,getClass,dirFor:classDir,previews,pageCache,mutate(id,change){if(!materialWrites.has(id))materialWrites.set(id,serialWriter());return materialWrites.get(id)(async()=>{const p=await getClass(id);change(p);await putClass(p);});}});
 function mergeSettings(saved,input){const s={...saved};for(const key of Object.keys(defaults))if(key in input){if(['apiKey','parseApiKey','fallbackApiKey','mineruKey','mineruToken'].includes(key)&&input[key]==='')continue;s[key]=input[key];}s.modelProfiles=mergeModelProfiles(saved,input);if(input.clearApiKey)s.apiKey='';if(input.clearParseApiKey)s.parseApiKey='';if(input.clearFallbackApiKey)s.fallbackApiKey='';if(input.clearMineruKey)s.mineruKey='';if(input.clearMineruToken)s.mineruToken='';return s;}
 async function classes(){const results=[];for(const d of await readdir(path.join(DATA,'classes'),{withFileTypes:true})){if(d.isDirectory()){const p=await json(path.join(DATA,'classes',d.name,'project.json'),null);if(p)results.push(migrateWeek(p));}}for(const pending of await pendingWeeks(DATA)){const index=results.findIndex(p=>p.id===pending.id),value=pendingProject(pending);if(index<0)results.push(value);else results[index]=value;}return results.sort((a,b)=>b.created.localeCompare(a.created));}
-for(const p of await classes()){await recoverMaterialCommits(classDir(p.id),async change=>{const current=await getClass(p.id);change(current);await putClass(current);Object.assign(p,current);});if(p.weekDeletionPending||await materialDeleteJournal(classDir(p.id)))continue;for(const f of p.files)if(f.aiParse?.status==='running'){f.aiParse.status='interrupted';f.aiParse.stage='上次解析被中断，可继续';f.aiParse.tasks={};f.progress='解析中断，可继续';}await migrateSourceNames(p,classDir(p.id),putClass);await migrateOutputs(p,classDir(p.id),putClass);const pending=await json(path.join(classDir(p.id),'.session-delete.json'),null);if(pending){p.deletionPending={sessionId:pending.sessionId,summary:pending.summary};p.status='error';p.stage='课堂删除未完成';}if(p.status==='running'){for(const f of p.files)if(f.parseStatus==='running'&&p.tasks?.[taskKey('reading',f.id)]?.status==='running'){f.parseStatus=f.parsed?'ready':'pending';delete f.progress;}for(const task of Object.values(p.tasks||{}))if(task.status==='running'){task.status='interrupted';task.error='Previous task was interrupted; saved results are available.';}p.status='interrupted';p.stage='上次处理被中断；原始材料和已有输出已保留，可重新处理。';}await recoverMineruArchives(p,classDir(p.id),putClass);await migrateDoubtCounts(p,classDir(p.id));await putClass(p);await migrateReadingCitations(p,classDir(p.id));}
+for(const p of await classes()){await recoverMaterialCommits(classDir(p.id),async change=>{const current=await getClass(p.id);change(current);await putClass(current);Object.assign(p,current);});if(p.weekDeletionPending||await materialDeleteJournal(classDir(p.id)))continue;for(const f of p.files)if(f.aiParse?.status==='running'){f.aiParse.status='interrupted';f.aiParse.stage='上次解析被中断，可继续';f.aiParse.tasks={};f.progress='解析中断，可继续';}await migrateSourceNames(p,classDir(p.id),putClass);await migrateOutputs(p,classDir(p.id),putClass);const pending=await json(path.join(classDir(p.id),'.session-delete.json'),null);if(pending){p.deletionPending={sessionId:pending.sessionId,summary:pending.summary};p.status='error';p.stage='课堂删除未完成';}if(p.status==='running'){for(const f of p.files)if(f.parseStatus==='running'&&p.tasks?.[taskKey('reading',f.id)]?.status==='running'){f.parseStatus=f.parsed?'ready':'pending';delete f.progress;}for(const task of Object.values(p.tasks||{}))if(task.status==='running'){task.status='interrupted';task.error='Previous task was interrupted; saved results are available.';}p.status='interrupted';p.stage='上次处理被中断；原始材料和已有输出已保留，可重新处理。';}await recoverMineruArchives(p,classDir(p.id),putClass);await migrateDoubtCounts(p,classDir(p.id));for(const [key,task] of Object.entries(p.tasks||{}))if(task.status==='queued'&&task.request?.sourceId){const list=translationQueue.get(p.id)||[];list.push({key,options:task.request});translationQueue.set(p.id,list);}await putClass(p);await migrateReadingCitations(p,classDir(p.id));}
 async function updateStage(p,text){p.stage=text;p.updated=new Date().toISOString();await putClass(p);}
 async function run(p,settings,{origin,fresh=false,mode='preparation',sessionId,sessionIds,sourceId,referenceProvider,signal,onProgress}={}){
  const dir=classDir(p.id);let model;const warnings=[],usedModels={};
@@ -502,6 +535,11 @@ const server=http.createServer(async(req,res)=>{
     await writeProject(id,latest=>{const t=latest.tasks?.[key];if(t)t.dismissed=taskRun(t);latest.revision=(latest.revision||0)+1;return latest;});
     return respond(res,200,{key,dismissed:taskRun(task)});
    }
+   if(action==='queue-cancel'&&method==='POST'){
+    const b=await payload(req),key=String(b.key||'');
+    if(p.tasks?.[key]?.status!=='queued')throw Error('这个任务不在排队中。');
+    await cancelQueuedTranslation(id,key);return respond(res,200,await getClass(id));
+   }
    if(action==='hint-check'&&method==='POST'){
     if(p.weekDeletionPending)throw Error('本周正在删除。');const b=await payload(req),f=p.files.find(f=>f.id===b.sourceId&&f.aiParse);if(!f)throw Error('材料没有 AI 解析结果。');
     if(f.aiParse.status==='running')throw Error('这份材料正在解析，完成后再核对。');
@@ -603,8 +641,14 @@ const server=http.createServer(async(req,res)=>{
    if(action==='sessions'&&method==='POST'){editable(id);const session=addSession(p,await payload(req));await putClass(p);return respond(res,201,{project:p,session});}
    if(action==='preview-fonts'&&method==='GET'){const f=p.files.find(f=>f.id===(url.searchParams.get('source')||url.searchParams.get('id'))&&f.role==='ppt');if(!f||!/^.*\.pptx$/i.test(f.name))throw Error('请选择 PPTX 课件。');const names=presentationFonts(await readFile(sourcePath(dir,f.stored)));return respond(res,200,await localFonts.manifest(names));}
    if(action==='process'&&method==='POST'){
+    const body=await payload(req);
+    if(body.mode==='reference'&&typeof body.sourceId==='string'&&courseBusy(id)){
+     if(!p.files.some(f=>f.id===body.sourceId&&f.role==='reading'&&f.parsed))throw Error('请先为选中的参考文献完成解析。');
+     if(p.tasks?.[taskKey('reference',body.sourceId)]?.status==='running')throw Error('这份参考文献正在翻译。');
+     return respond(res,202,await enqueueTranslation(id,body));
+    }
     editable(id);const s=await config();validateSettings(s);
-    const options=await payload(req),mode=options.mode||(p.sessions.some(s=>s.srtId)?'session':'preparation'),sessionId=options.sessionId||p.sessions.find(s=>s.srtId)?.id;
+    const options=body,mode=options.mode||(p.sessions.some(s=>s.srtId)?'session':'preparation'),sessionId=options.sessionId||p.sessions.find(s=>s.srtId)?.id;
     if(!['preparation','session','analysis','week','reading','reference'].includes(mode))throw Error('无效处理任务。');
     let referenceProvider;
     if(mode==='reference'&&options.referenceProfileId){

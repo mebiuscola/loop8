@@ -1,6 +1,7 @@
 // The only module that talks to the backend. Every call here is listed in docs/API.md.
 
-export type TaskStatus='running'|'complete'|'partial'|'error'|string;
+/** queued: a reference translation waiting for another job of the course to finish (docs/API.md). */
+export type TaskStatus='queued'|'running'|'complete'|'partial'|'error'|string;
 export interface Task{status:TaskStatus;stage?:string;error?:string;started?:string;finished?:string;warnings?:unknown[];/** Run acknowledged with "知道了" (server rule taskRun). */dismissed?:string;}
 /** Per-file AI parsing progress (lib/ai-material.mjs). Fields are optional: older projects lack some. */
 export interface AiParse{status?:string;stage?:string;error?:string;model?:string;started?:number;finished?:number;prepared?:number;completed?:number;total?:number;drafted?:number;
@@ -85,7 +86,7 @@ export const api={
  referenceReader:(id:string,sourceId:string)=>request<ReferenceReader>(project(id)+'/reference-reader?source='+encodeURIComponent(sourceId)),
  referenceFileUrl:(id:string,sourceId:string)=>project(id)+'/reference-file?source='+encodeURIComponent(sourceId),
  /** Starts a background generation; the task then shows up in project.tasks. */
- process:(id:string,mode:ProcessMode,ref?:string)=>post<unknown>(project(id)+'/process',{mode,...(ref?(mode==='session'||mode==='analysis'?{sessionId:ref}:{sourceId:ref}):{})}),
+ process:(id:string,mode:ProcessMode,ref?:string)=>post<Project>(project(id)+'/process',{mode,...(ref?(mode==='session'||mode==='analysis'?{sessionId:ref}:{sourceId:ref}):{})}),
  /** Weekly Deep Dive over the chosen classes (only classes that have a transcript). */
  /** Translates a reference; with a profile, the remaining paragraphs use that model this time only. */
  processReference:(id:string,sourceId:string,referenceProfileId?:string)=>post<unknown>(project(id)+'/process',{mode:'reference',sourceId,...(referenceProfileId?{referenceProfileId}:{})}),
@@ -148,6 +149,7 @@ export const api={
  aiPartial:(id:string,sourceId:string)=>request<PartialResults>(project(id)+'/ai-partial?source='+encodeURIComponent(sourceId)),
  aiPartialImport:(id:string,sourceId:string)=>post<Project>(project(id)+'/ai-partial-import',{sourceId,confirm:true}),
  hintCheck:(id:string,sourceId:string,page:number,hint:string,checked:boolean)=>post<{page:number;checked:string[];hints:number}>(project(id)+'/hint-check',{sourceId,page,hint,checked}),
+ queueCancel:(id:string,key:string)=>post<Project>(project(id)+'/queue-cancel',{key}),
  aiCacheClear:(id:string,sourceId:string)=>post<unknown>(project(id)+'/ai-cache-clear',{sourceId}),
  createSession:(id:string,type:string,title:string,date:string)=>post<{project:Project;session:Session}>(project(id)+'/sessions',{type,title,date}),
  sessionRename:(id:string,sessionId:string,title:string)=>post<Project>(project(id)+'/session-rename',{sessionId,title}),

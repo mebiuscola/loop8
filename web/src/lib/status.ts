@@ -7,7 +7,7 @@ export const statusWord:Record<StatusKind,string>={idle:'未开始',running:'进
 const STOPPED=/已停止|已取消|可以继续|可继续/;
 
 export function taskStatus(task:Task):StatusKind{
- if(task.status==='running')return 'running';
+ if(task.status==='running'||task.status==='queued')return 'running';   // queued: waits, then starts by itself
  if(task.status==='complete')return 'done';
  if(task.status==='partial')return 'stopped';
  if(task.status==='error')return STOPPED.test(task.error||'')?'stopped':'failed';

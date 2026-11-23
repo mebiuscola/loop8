@@ -105,7 +105,7 @@
    if(status.kind==='done')return null;
    return {label:status.kind==='idle'?'生成本周课件导读':status.kind==='stale'?'更新本周课件导读':'继续生成导读',disabled:false};
   }
-  if(status.kind==='running')return {label:'翻译中…',disabled:true};
+  if(status.kind==='running')return {label:project.tasks?.['reference:'+file.id]?.status==='queued'?'排队中…':'翻译中…',disabled:true};
   if(status.kind==='done'||status.text==='读取中…')return null;
   return {label:status.kind==='idle'?'翻译这份文献':status.kind==='stale'?'重新翻译':'补译剩余',disabled:false};
  });
