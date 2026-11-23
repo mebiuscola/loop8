@@ -19,7 +19,9 @@ export function coursewareStatus(project:Project,file:SourceFile,reader?:Coursew
  if(task?.status==='running')return {kind:'running',text:'导读生成中'};
  if(!reader)return {kind:'idle',text:'读取中…'};
  const total=reader.pages.length,done=reader.pages.filter(p=>p.closeReading||p.paragraphs.some(x=>x.chinese)).length;
- if(reader.sourceChanged||reader.stale)return {kind:'stale',text:'原件已变更 · 建议更新'};
+ // "原件已变更" only when the original file itself changed; otherwise other material of the week did.
+ if(reader.sourceChanged)return {kind:'stale',text:'原件已变更 · 建议更新'};
+ if(reader.stale)return {kind:'stale',text:'材料有变化 · 建议更新'};
  if(!reader.generated||!done){
   if(task&&['error','partial'].includes(task.status)){const k=taskStatus(task);return {kind:k,text:(k==='stopped'?'已停止':'失败')+(k==='failed'?reason(task.error):'')+(done?' · '+done+'/'+total+' 已保存':'')};}
   return {kind:'idle',text:'未生成导读'};
