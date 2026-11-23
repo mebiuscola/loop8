@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {openApp,waitFor} from './helpers/app.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)),quote='Distance is an analytical scale, not an excuse to ignore form.';
 function originalPdf(){const content='BT /F1 12 Tf 50 700 Td ('+quote+') Tj ET',objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',`<< /Length ${content.length} >>\nstream\n${content}\nendstream`];let text='%PDF-1.4\n',offsets=[0];for(const [i,obj] of objects.entries()){offsets.push(Buffer.byteLength(text));text+=(i+1)+' 0 obj\n'+obj+'\nendobj\n';}const xref=Buffer.byteLength(text);text+='xref\n0 6\n0000000000 65535 f \n'+offsets.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';return Buffer.from(text);}
 test('weekly Deep Dive citations open original Reading text and PDF in the actual browser, support range requests and reject stale references',async t=>{
@@ -15,7 +16,7 @@ test('weekly Deep Dive citations open original Reading text and PDF in the actua
   if(system.includes('Deep Dive issue plan'))output=JSON.stringify({centralQuestion:'Does scale replace form?',issues:[{question:'Does scale replace form?',searchQueries:['analytical scale form']}]});
   else if(system.includes('Weekly synthesis')){const e=input.readingEvidence.find(v=>v.text.includes(quote));assert(e);output=`## Does scale replace form?\n\n**Reading says**: scale does not abolish form. [${e.cite}]\n\n> ${quote} [${e.cite}]\n\n**Analysis**: this limits the inference.`;}
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:output}}]}));
- });await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ });await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:dir,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);let ui;
  try{
   for(let i=0;i<100&&!log.includes('http://');i++)await sleep(30);const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);

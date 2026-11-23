@@ -8,6 +8,7 @@ import {spawn} from 'node:child_process';
 import {pipeline} from '../lib/pipeline.mjs';
 import {reconstructBatch,repairWindow} from '../lib/class-reconstruction.mjs';
 import {validateSegments} from '../lib/core.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 const settings={model:'mock',baseUrl:'http://mock',contextChars:100000,maxOutputTokens:12000};
 const ids=(a,b)=>Array.from({length:b-a+1},(_,i)=>a+i);
 const segment=(cueIds,speaker,english)=>({chapter:'Discussion',cueIds,speaker,english,corrections:[]});
@@ -60,7 +61,7 @@ test('server loads the local restoration Skill and publishes a chronological tra
   else if(system.includes('Paragraph translation'))answer=JSON.stringify({chinese:'按原顺序保留课堂发言。'});
   else assert(!/Deep Dive|Weekly synthesis/.test(system),'transcript repair never launches analysis');
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:answer}}]}));
- });await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ });await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:dir,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
   for(let i=0;i<100&&!log.includes('http://');i++)await sleep(30);const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);

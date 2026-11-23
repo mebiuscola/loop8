@@ -49,6 +49,7 @@ import {analysisState,taskKey} from './lib/workflow.mjs';
 import {pptPages,pageText,pageImages} from './lib/pages.mjs';
 import {bodyParagraphs} from './lib/reader.mjs';
 import {storeSource,originalName,sourcePath,migrateSourceNames} from './lib/storage.mjs';
+import {UNSAFE_PORTS} from './lib/ports.mjs';
 import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,readHintChecks,setHintCheck,checkpointFile,doubtRules} from './lib/doubts.mjs';
 import {previewService,pdfInfo} from './lib/preview.mjs';
 
@@ -726,4 +727,6 @@ const port=Number(process.env.PORT||4317);
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`Port ${port} is already in use. Close the existing app or set PORT to another port.`:e.message);process.exitCode=1;});
 server.requestTimeout=30*60*1000;
 for(const event of ['SIGINT','SIGTERM'])process.once(event,async()=>{const guard=setTimeout(()=>process.exit(0),4000);guard.unref();await Promise.all([previewJobs.close(),acpJobs.close(),chatgptJobs.close(),chatgptBatchJobs.close()]);await acpRuntime.disconnect();process.exit(0);});
-server.listen(port,'127.0.0.1',()=>{const address=`http://127.0.0.1:${server.address().port}`;console.log(`Classroom Local: ${address}\nKeep this window open. Ctrl+C to stop.\nData: ${DATA}`);if(process.argv.includes('--open')&&process.platform==='win32')spawn('explorer.exe',[address],{windowsHide:true,stdio:'ignore'});});
+// A random port (PORT=0, used by the tests) that browsers and fetch refuse (lib/ports.mjs) is drawn again.
+function start(){server.listen(port,'127.0.0.1',()=>{if(port===0&&UNSAFE_PORTS.has(server.address().port)){server.close(()=>start());return;}const address=`http://127.0.0.1:${server.address().port}`;console.log(`Classroom Local: ${address}\nKeep this window open. Ctrl+C to stop.\nData: ${DATA}`);if(process.argv.includes('--open')&&process.platform==='win32')spawn('explorer.exe',[address],{windowsHide:true,stdio:'ignore'});});}
+start();

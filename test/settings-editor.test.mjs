@@ -8,9 +8,10 @@ import os from 'node:os';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {openApp,waitFor,waitText,click,fill,has,text} from './helpers/app.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 async function until(fn){for(let i=0;i<220;i++){const value=await fn();if(value)return value;await sleep(30);}throw Error('Settings UI timed out');}
 test('section saves are independent, default includes ACP, model tests preserve private keys, editing never sends a request',async t=>{
- const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-settings-')),requests=[];const mock=http.createServer(async(req,res)=>{let raw='';for await(const b of req)raw+=b;const body=JSON.parse(raw);requests.push({authorization:req.headers.authorization,body});res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify({status:'ok',books:7,notes:4})}}]}));});await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-settings-')),requests=[];const mock=http.createServer(async(req,res)=>{let raw='';for await(const b of req)raw+=b;const body=JSON.parse(raw);requests.push({authorization:req.headers.authorization,body});res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify({status:'ok',books:7,notes:4})}}]}));});await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:dir,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='',ui;child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
   const base=await until(()=>log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0]);const api=async(url,b)=>{const r=await fetch(base+url,b===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});const value=await r.json();assert(r.ok,value.error);return value;};

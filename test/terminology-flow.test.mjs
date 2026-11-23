@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {zipFixture} from './helpers/zip-fixture.mjs';
 import {contentHash} from '../lib/materials.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 test('published PPT terms reach actual preparation, session translation, Deep Dive, weekly synthesis and every QA scope',async()=>{
@@ -18,7 +19,7 @@ test('published PPT terms reach actual preparation, session translation, Deep Di
   else if(system.includes('Reconstruct classroom'))output=JSON.stringify({segments:input.cues.map(c=>({chapter:'Reading',speaker:'Lecturer',cueIds:[c.id],english:c.text}))});
   else if(system.includes('Paragraph translation'))output=JSON.stringify({chinese:'我们讨论远读。'});
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:output}}]}));
- });await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ });await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:dir,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',v=>log+=v);child.stderr.on('data',v=>log+=v);
  try{
   for(let i=0;i<100&&!log.includes('http://');i++)await sleep(30);const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);

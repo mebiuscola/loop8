@@ -9,6 +9,7 @@ import {scriptState,analysisState,weeklyState} from '../lib/workflow.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {openApp,go,waitFor,waitText,click} from './helpers/app.mjs';
 import {pipeline} from '../lib/pipeline.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 test('forcing an analysis rerun preserves transcript checkpoints and shared material notes',async()=>{
@@ -40,7 +41,7 @@ test('actual UI and HTTP tasks keep scripts, per-session analysis and selected w
   else if(system.includes('Deep Dive /')){if(failAnalysis){res.writeHead(503);return res.end('{}');}answer='## Single analysis\n\nLecturer says: the question of scale.\n\nAnalysis: a distinct argument.';}
   else if(system.includes('Weekly synthesis'))answer='## Weekly analysis\n\nAnalysis: compare the selected classroom evidence.';
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:answer}}]}));
- });await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ });await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:dir,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
   for(let i=0;i<100&&!log.includes('http://');i++)await sleep(30);const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);

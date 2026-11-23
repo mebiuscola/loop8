@@ -8,6 +8,7 @@ import path from 'node:path';
 import {migrateWeek,addSession,stale} from '../lib/week.mjs';
 import {pptPages,pageImages} from '../lib/pages.mjs';
 import {zipFixture} from './helpers/zip-fixture.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 test('legacy project migration preserves original file paths, generation, speaker coverage and chat',()=>{
  const old={revision:4,outputRevision:4,generation:'original-generation',files:[{id:'srt1',stored:'original.srt',role:'srt'}],coverage:{cues:2},chat:[{text:'old'}]};
@@ -33,7 +34,7 @@ test('preparation without SRT, shared materials across two sessions, scoped QA, 
   else{if(value?.sourceId)materialCalls++;content='[Reading page 1] Shared comparison material. [PPT parser page 1] Comparative literature.';}
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content}}]}));
  });
- await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:temp,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
   for(let i=0;i<100&&!log.includes('http://');i++)await sleep(30);const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);

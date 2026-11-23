@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {testPdf} from '../lib/diagnostics.mjs';
+import {listenSafe} from '../lib/ports.mjs';
 
 test('legacy PDF.js renders with missing modern APIs in page and real Worker', async t => {
   try { await browserExecutable(); } catch { t.skip('Chrome/Edge unavailable'); return; }
@@ -17,7 +18,7 @@ test('legacy PDF.js renders with missing modern APIs in page and real Worker', a
       res.setHeader('Content-Type','text/javascript');res.end(await readFile(new URL('../public/vendor/pdfjs/'+name, import.meta.url)));
     }catch(e){res.writeHead(500);res.end(e.message);}
   });
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let ui;
+  await listenSafe(server);let ui;
   try {
     ui=await launchRenderer('http://127.0.0.1:'+server.address().port,{});
     const result=await ui.evaluate(`(async()=>{

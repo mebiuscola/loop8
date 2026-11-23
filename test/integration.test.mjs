@@ -7,6 +7,7 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,rm,readFile,stat} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {listenSafe} from '../lib/ports.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 test('local workflow: parse recovery, immutable originals, complete outputs, QA, failed rerun preserves output',async t=>{
  const temp=await mkdtemp(path.join(os.tmpdir(),'classroom-check-'));let failCoverage=false,calls=0,contextActive=0,contextPeak=0;
@@ -20,7 +21,7 @@ test('local workflow: parse recovery, immutable originals, complete outputs, QA,
   else {contextActive++;contextPeak=Math.max(contextPeak,contextActive);await sleep(150);contextActive--;content='Evidence: opacity. [Reading page 1] / [SRT 00:00:01,000].';}
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content}}]}));
  });
- await new Promise(r=>mock.listen(0,'127.0.0.1',r));
+ await listenSafe(mock);
  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:temp,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});
  let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
  try{
