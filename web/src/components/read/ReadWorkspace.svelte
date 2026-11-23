@@ -23,16 +23,19 @@
 
  type Kind='ppt'|'ref';
  // rest = "<ppt|ref>/<sourceId>/p/<page>"
+ // Each part of the address is its own plain value, so a refresh of the course data (which now
+ // arrives whenever anything in the course is saved) never counts as a change of address and
+ // never sends the reader back to the page first named in it.
+ const parts=$derived(rest.split('/'));
+ const urlKind=$derived(parts[0]);
+ const sourceId=$derived(parts[1]||'');
+ const urlPage=$derived(Math.max(1,Number(parts[3])||1));
  // Without a kind in the address, open courseware, or the references when the week has none.
- const parsed=$derived.by(()=>{
-  const [kind,sourceId,,page]=rest.split('/');
-  const fallback:Kind=project.files.some(f=>f.role==='ppt')||!project.files.some(f=>f.role==='reading')?'ppt':'ref';
-  return {kind:(kind==='ref'||kind==='ppt'?kind:fallback) as Kind,sourceId:sourceId||'',page:Math.max(1,Number(page)||1)};
- });
+ const fallbackKind=$derived<Kind>(project.files.some(f=>f.role==='ppt')||!project.files.some(f=>f.role==='reading')?'ppt':'ref');
  const files=$derived({ppt:project.files.filter(f=>f.role==='ppt'),ref:project.files.filter(f=>f.role==='reading')});
- const kind=$derived(parsed.kind);
+ const kind=$derived<Kind>(urlKind==='ref'||urlKind==='ppt'?urlKind:fallbackKind);
  const list=$derived(files[kind]);
- const file=$derived(list.find(f=>f.id===parsed.sourceId)||list[0]||null);
+ const file=$derived(list.find(f=>f.id===sourceId)||list[0]||null);
 
  const href=(k:Kind,sourceId?:string,page=1)=>courseHref(project.id,'read',k+(sourceId?'/'+encodeURIComponent(sourceId)+'/p/'+page:''));
 
@@ -78,7 +81,7 @@
  // Page position: the reader reports the page in view; we record it in the URL and offer it to Ask.
  let page=$state(1),pageCount=$state(0),seq=0;
  let jump=$state<{page:number;seq:number}>({page:1,seq:0});
- $effect(()=>{const p=parsed.page;page=p;jump={page:p,seq:++seq};});
+ $effect(()=>{const p=urlPage;page=p;jump={page:p,seq:++seq};});
  const total=$derived(current?(kind==='ppt'?Math.max((current as CR).pages.length,(current as CR).nativePageCount||0,preview?.status?.pages||0):pageCount):0);
  // The printed page number of the reference page in view, next to the PDF page number.
  const printed=$derived(kind==='ref'&&current?(current as RR).paragraphs.find(p=>p.pageIndex===page-1&&p.printedPage)?.printedPage||'':'');
@@ -148,7 +151,7 @@
 
   {#if list.length}
    <select aria-label="选择材料" value={file?.id} onchange={e=>router.go(href(kind,(e.currentTarget as HTMLSelectElement).value))}>
-    {#each list as f (f.id)}<option value={f.id}>{f.name} — {statusOf(kind,f.id).text}</option>{/each}
+    {#each list as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
    </select>
    <div class="pager" aria-label="翻页">
     <button class="btn btn-quiet icon" onclick={()=>goPage(page-1)} disabled={page<=1} title="上一页"><Icon name="chevron-left" size={16}/></button>

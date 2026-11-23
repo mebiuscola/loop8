@@ -102,6 +102,7 @@
  }
 
  const week=$derived(weekDiveStatus(project));
+ const weekEmpty=$derived(!project.sessions.length&&!project.files.some(f=>f.role==='ppt'||f.role==='reading'));
  const weekIncluded=$derived(weeklyAnalysis(project).available?(project.weekly?.selectedSessionIds?.length??0):null);
 </script>
 
@@ -206,9 +207,15 @@
   <div class="box">
    <div class="class-row">
     <span class="tag">WK</span>
-    <div class="name"><span class="title">整周 Deep Dive</span><small>{weekIncluded===null?'可选择纳入哪些课堂':weekIncluded?'含 '+weekIncluded+' 节课':'仅本周材料'}</small></div>
-    <StatusBadge kind={week.kind} text={week.text}/>
-    <div class="act"><a class="btn" href={courseHref(project.id,'deepdive','week')}>打开</a></div>
+    <!-- The whole-week Deep Dive needs something to analyse: courseware, references or a class. -->
+    {#if weekEmpty}
+     <div class="name"><span class="title">整周 Deep Dive</span><small>先添加课件、参考文献或课堂</small></div>
+     <span></span><span></span>
+    {:else}
+     <div class="name"><span class="title">整周 Deep Dive</span><small>{weekIncluded===null?'可选择纳入哪些课堂':weekIncluded?'含 '+weekIncluded+' 节课':'仅本周材料'}</small></div>
+     <StatusBadge kind={week.kind} text={week.text}/>
+     <div class="act"><a class="btn" href={courseHref(project.id,'deepdive','week')}>打开</a></div>
+    {/if}
    </div>
   </div>
  </section>

@@ -127,7 +127,7 @@
  {:else if session&&status}
   <div class="toolbar">
    <select aria-label="选择课堂" value={session.id} onchange={e=>router.go(href(sessions.find(s=>s.id===(e.currentTarget as HTMLSelectElement).value)!))}>
-    {#each sessions as s (s.id)}<option value={s.id}>{s.type} · {s.title}{s.date?' · '+s.date:''} — {scriptStatus(project,s).text}</option>{/each}
+    {#each sessions as s (s.id)}<option value={s.id}>{s.type} · {s.title}{s.date?' · '+s.date:''}</option>{/each}
    </select>
    <ul class="have" aria-label="本节材料">
     <li class:yes={!!srt} title={srt?.name||'还没有字幕'}>字幕 {srt?'✓':'–'}</li>
@@ -197,7 +197,7 @@
 
 <style>
  .hidden{display:none;}
- .class{display:flex;flex-direction:column;height:100%;min-height:0;}
+ .class{display:flex;flex-direction:column;height:100%;min-height:0;container-type:inline-size;}
  .toolbar{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-2) var(--space-4);background:var(--bg-surface);border-bottom:1px solid var(--line);}
  select{min-width:0;max-width:420px;height:32px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--bg-raised);font-size:var(--text-sm);}
  .have{display:flex;gap:var(--space-2);margin:0;padding:0;list-style:none;font-size:var(--text-xs);}
@@ -224,4 +224,7 @@
  .row{display:flex;gap:var(--space-2);flex-wrap:wrap;margin:var(--space-3) 0 var(--space-2);}
  small{color:var(--fg-muted);font-size:var(--text-xs);}
  .loading{padding:var(--space-5);color:var(--fg-muted);}
+ /* A narrow work area keeps the toolbar on one line: the subtitle / recording / script marks are
+    left out (the notice below the toolbar and the ⋯ menu say the same). */
+ @container (max-width:900px){.have{display:none;}select{max-width:260px;}}
 </style>

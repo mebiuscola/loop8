@@ -87,6 +87,22 @@ test('frontend review fixes: course switching, polling, sidebar, stale scripts, 
   assert(lists<=2,'one polling loop (15 s apart), got '+lists+' list requests in 16 s');
   await ui.evaluate('window.fetch=__fetch;true');
 
+  // Interface tidying: status words are not repeated inside the material and class lists, a week
+  // with nothing to analyse offers no whole-week Deep Dive, and a narrow work area keeps the class
+  // toolbar on one line.
+  await go(ui,hashB.slice(1)+'/overview');
+  await waitFor(ui,"document.querySelector('main')?.innerText.includes('先添加课件、参考文献或课堂')",{label:'empty week explains what the whole-week Deep Dive needs'});
+  assert.equal(await ui.evaluate("!!document.querySelector('main a[href$=\"/deepdive/week\"]')"),false);
+  await go(ui,hashA.slice(1)+'/class');
+  await waitFor(ui,"document.querySelector('select[aria-label=选择课堂] option')?.textContent==='Lecture · Lecture One'",{label:'class list without status words'});
+  await go(ui,hashA.slice(1)+'/read/ref');
+  await waitFor(ui,"document.querySelector('select[aria-label=选择材料] option')?.textContent==='Reading.pdf'",{label:'material list without status words'});
+  await go(ui,hashA.slice(1)+'/class');
+  await ui.screenshot(1000,700);
+  await waitFor(ui,"getComputedStyle(document.querySelector('ul.have')).display==='none'",{label:'marks left out in a narrow work area'});
+  await ui.screenshot(1600,900);
+  await waitFor(ui,"getComputedStyle(document.querySelector('ul.have')).display==='flex'",{label:'marks shown in a wide work area'});
+
   // A narrow window collapses the course list; a wide one brings back the user's choice.
   await ui.screenshot(700,800);
   await waitFor(ui,"document.querySelector('.frame').classList.contains('sidebar-collapsed')",{label:'collapsed when narrow'});
