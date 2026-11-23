@@ -29,3 +29,39 @@ test('Antigravity requests record per-phase timing, and show when the program an
   assert.doesNotMatch(JSON.stringify(acpTimings),/first batch|second batch|private thought/,'no request, reply or thought text is kept');
  }finally{console.log=quiet;await runtime.disconnect();}
 });
+
+const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const mockRuntime=()=>createAcpRuntime({validate:()=>{},launch:(exe,args,options)=>spawn(exe,[fixture.pathname.replace(/^\/(.:)/,'$1')],options)});
+
+// Pages of one deck share a session: the instructions (with the tool rules) go with the first page
+// only; later pages carry a short reminder and their own input. Every fourth page starts afresh.
+test('pages of a deck share a session for up to four pages, and the instructions are sent once',async()=>{
+ const runtime=mockRuntime(),quiet=console.log;console.log=()=>{};
+ try{
+  const heads=[];
+  for(let page=1;page<=5;page++)heads.push(JSON.parse(await runtime.run(settings,{system:'Read the slide.',user:'echo-head page '+page,images:[png],sessionGroup:'pages:deck'})));
+  assert.deepEqual(heads.map(h=>h.full),[true,false,false,false,true],'full instructions on the first page and again after four');
+  assert.equal(heads[0].tools,true,'the tool rules go with the instructions');
+  assert(heads.every(h=>h.images===1),'every page still sends its own image');
+  // A different instruction set in the same group (e.g. a translation request) is sent in full once.
+  const other=JSON.parse(await runtime.run(settings,{system:'Translate.',user:'echo-head translation',sessionGroup:'pages:deck'}));
+  assert.equal(other.full,true);
+ }finally{console.log=quiet;await runtime.disconnect();}
+});
+
+// Tool use beyond the limit stops the request; it is then asked once more without tools.
+test('tool use past the limit stops the request, records the tool kind, and a retry runs without tools',async()=>{
+ const runtime=mockRuntime(),quiet=console.log;console.log=()=>{};
+ try{
+  const error=await runtime.run(settings,{user:'use-tools on this slide',toolLimitMs:300}).then(()=>null,e=>e);
+  assert.equal(error?.category,'tool_timeout',String(error?.message));
+  assert.match(error.message,/工具调用超过/);
+  const retried=await runtime.run(settings,{user:'use-tools on this slide',noTools:true});
+  assert(retried.length>0,'the request without tools completes');
+  const last=acpTimings.at(-1);
+  assert.equal(last.noTools,true);
+  const head=JSON.parse(await runtime.run(settings,{user:'echo-head',noTools:true}));
+  assert.deepEqual([head.noTools,head.tools],[true,false],'no tool rules, an explicit "no tools" instead');
+  assert(acpTimings.some(t=>t.toolKinds?.search===1),'the kind of tool is recorded, not its query');
+ }finally{console.log=quiet;await runtime.disconnect();}
+});
