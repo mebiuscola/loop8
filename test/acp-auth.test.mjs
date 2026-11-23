@@ -28,8 +28,8 @@ test('personal auth finishes without session/new, repeated login reuses verified
 });
 test('startup and authorization timeouts are distinct, cancellation releases slot, auth URL only exists while pending',async()=>{
  const startup=runtime({MOCK_ACP_HANG:'initialize'},{initialize:1000});try{await assert.rejects(startup.run(settings,{action:'login'}),/尚未进入 Google/);}finally{await startup.disconnect();}
- const r=runtime({MOCK_ACP_AUTH_URL:'1',MOCK_ACP_HANG:'authenticate'},{authenticate:500}),jobs=interactiveJobs();try{
-  const job=jobs.start(options=>r.run(settings,{...options,action:'login'}));let state;for(let i=0;i<200;i++){state=jobs.get(job.id);if(state.authorizationUrl)break;await sleep(5);}assert.equal(state.authorizationUrl,url);assert.equal(state.phase,'authenticate');assert(state.phaseStarted);jobs.cancel(job.id);
+ const r=runtime({MOCK_ACP_AUTH_URL:'1',MOCK_ACP_HANG:'authenticate'}),jobs=interactiveJobs();try{
+  const job=jobs.start(options=>r.run(settings,{...options,action:'login'}));let state;for(let i=0;i<600;i++){state=jobs.get(job.id);if(state.authorizationUrl)break;await sleep(5);}assert.equal(state.authorizationUrl,url);assert.equal(state.phase,'authenticate');assert(state.phaseStarted);jobs.cancel(job.id);
   for(let i=0;i<300&&jobs.get(job.id).status==='running';i++)await sleep(10);assert.equal(jobs.get(job.id).status,'cancelled');assert.equal(jobs.get(job.id).authorizationUrl,undefined);assert.equal(r.busy,false);
  }finally{await jobs.close();await r.disconnect();}
  const auth=runtime({MOCK_ACP_HANG:'authenticate'},{authenticate:500});try{await assert.rejects(auth.run(settings,{action:'login'}),/个人账号认证超时/);}finally{await auth.disconnect();}

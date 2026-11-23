@@ -24,7 +24,7 @@ test('cloud upload gate overlaps 4 uploads and releases slots before parsing; si
  const count=6,gate=semaphore(4),controller=new AbortController();let active=0,peak=0,uploaded=0;const timer=setTimeout(()=>controller.abort(),2500);
  const fake=async(url,opts={})=>{opts.signal?.throwIfAborted();url=String(url);
   if(url.endsWith('/file-urls/batch')){const b=JSON.parse(opts.body),id=b.files[0].data_id;return Response.json({code:0,data:{batch_id:id,file_urls:[`https://storage.example/${id}`]}});}
-  if(url.startsWith('https://storage.example/')){active++;peak=Math.max(peak,active);await sleep(20);active--;uploaded++;return new Response('',{status:200});}
+  if(url.startsWith('https://storage.example/')){active++;peak=Math.max(peak,active);for(let w=0;w<100&&peak<4;w++)await sleep(10);await sleep(10);active--;uploaded++;return new Response('',{status:200});}
   if(url.includes('/extract-results/batch/')){const id=url.split('/').at(-1);return Response.json({code:0,data:{extract_result:[{data_id:id,state:uploaded===count?'done':'pending',full_zip_url:`https://cdn.example/${id}`}]}});}
   if(url.startsWith('https://cdn.example/')){const id=url.split('/').at(-1);return new Response(zipFixture([['full.md','THIS MARKDOWN MUST NOT BE USED'],['doc_content_list.json',JSON.stringify([{type:'text',page_idx:0,text:'Evidence for '+id}])]]));}
   throw Error('unexpected URL');

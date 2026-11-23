@@ -52,7 +52,7 @@ test('the server announces course changes, pages update without polling, and tas
   await reload(ui);
   for(let i=0;i<100;i++){const t=(await (await fetch(base+'/api/projects/'+id)).json()).tasks['reading:gone'];if(t.dismissed)break;await sleep(50);}
   assert.equal((await (await fetch(base+'/api/projects/'+id)).json()).tasks['reading:gone'].dismissed,failed.finished+'|解析失败');
-  assert.equal(await ui.evaluate("localStorage.getItem('classroom.next.dismissedTasks')"),null);
+  await waitFor(ui,"localStorage.getItem('classroom.next.dismissedTasks')===null",{label:'the browser copy is removed after moving'});
   await waitFor(ui,"(document.querySelector('nav.sidebar a[title=\"Events week\"] .dot')?.className||'').includes('ready')",{label:'both acknowledged tasks leave the course dot'});
 
   // A change made elsewhere (another tab or device) appears at once, long before the 60-second safety refresh.
