@@ -10,7 +10,7 @@ export const NEW_PREFIX='new:';            // value of a model not yet saved as 
 export interface ThinkingLevel{value:string;name:string;}
 export const TASKS:[string,[string,string][]][]=[
  ['课件',[['pptRecognition','课件识别'],['pptTranslation','课件翻译'],['pptExplanation','课件解读'],['deckReview','整课检查'],['pptPreview','单页 PPT 试解析']]],
- ['参考文献',[['referenceTranslation','参考文献翻译'],['pdfRecognition','文献 AI 补救']]],
+ ['参考文献',[['referenceTranslation','参考文献翻译'],['referenceTerms','参考文献术语整理'],['pdfRecognition','文献 AI 补救']]],
  ['课堂',[['classroom','课堂重建'],['transcriptTranslation','讲稿翻译']]],
  ['分析与提问',[['deepDive','本节 Deep Dive'],['weeklyDeepDive','整周 Deep Dive'],['context','材料背景整理'],['qa','提问（Ask）']]],
 ];
@@ -130,6 +130,7 @@ export class SettingsModel{
   const v=this.assign.modelRoutes[task];
   if(v)return this.labelOf(v);
   if(task==='pptPreview'||task==='deckReview')return this.actual('pptRecognition');
+  if(task==='referenceTerms')return this.actual('referenceTranslation');
   return this.labelOf(this.assign.defaultId)||'未选择模型';
  }
 
