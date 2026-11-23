@@ -81,6 +81,7 @@ test('existing results are recounted once at startup, without re-parsing; hints 
   await go(ui,'/w/'+id+'/read/ppt/deck/p/2');
   await waitText(ui,'本机缺少课件字体','.statusline');
   await waitFor(ui,"[...document.querySelectorAll('section[data-page=\"2\"] details.hints summary')].some(s=>s.textContent.includes('解析提示 1 条'))",{label:'page 2 shows its hint'});
+  assert(await ui.evaluate("!!document.querySelector('section[data-page=\"2\"] .notes-col details.hints')"),'the hints sit in the analysis column of the page');
   assert.equal(await ui.evaluate("document.querySelector('section[data-page=\"1\"] details.hints')"),null,'no hint box on a page whose only doubt was the font warning');
   await ui.evaluate("document.querySelector('section[data-page=\"2\"] details.hints').open=true;true");
   await click(ui,'已核对','section[data-page="2"] button');
