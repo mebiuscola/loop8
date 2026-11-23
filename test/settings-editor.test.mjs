@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
-import {openApp,waitFor,waitText,click,fill,has,text} from './helpers/app.mjs';
+import {openApp,waitFor,waitText,click,fill,has,text,pickerOptions,pick} from './helpers/app.mjs';
 import {listenSafe} from '../lib/ports.mjs';
 async function until(fn){for(let i=0;i<220;i++){const value=await fn();if(value)return value;await sleep(30);}throw Error('Settings UI timed out');}
 test('section saves are independent, default includes ACP, model tests preserve private keys, editing never sends a request',async t=>{
@@ -37,10 +37,10 @@ test('section saves are independent, default includes ACP, model tests preserve 
    await click(ui,'模型分配','.nav button');
    await waitFor(ui,"document.querySelector('#default-model')?.value==='another-acp'");
    assert.equal(await ui.evaluate("document.querySelector('#route-qa').value"),id);
-   assert(await ui.evaluate("[...document.querySelector('#route-deepDive').options].some(o=>o.value==='another-acp'&&!o.disabled)"),'Antigravity models can be assigned to Deep Dive');
+   assert((await pickerOptions(ui,'route-deepDive')).includes('another-acp'),'Antigravity models can be assigned to Deep Dive');
    if(process.env.CLASSROOM_SETTINGS_EVIDENCE){await mkdir(process.env.CLASSROOM_SETTINGS_EVIDENCE,{recursive:true});await writeFile(path.join(process.env.CLASSROOM_SETTINGS_EVIDENCE,'Function-models.png'),await ui.screenshot(1500,1000));await ui.screenshot(1440,960);}
    // An unsaved assignment stays a draft while another page is saved.
-   await fill(ui,'#route-qa','another-acp');
+   await pick(ui,'route-qa','another-acp');
    await click(ui,'高级','.nav button');
    await fill(ui,'材料解析并发数','3');
    await click(ui,'保存','.savebar button');

@@ -64,6 +64,20 @@ export async function fill(ui,target,value){
  })()`,{label:'fill '+target});
 }
 
+/** Values offered by a settings model picker (button #id): opens it, reads the options, closes it. */
+export async function pickerOptions(ui,id){
+ await waitFor(ui,`!!document.querySelector('#${id}')`,{label:'picker '+id});
+ return ui.evaluate(`(async()=>{const b=document.querySelector('#${id}');b.click();await new Promise(r=>setTimeout(r,50));
+  const v=[...b.parentElement.querySelectorAll('[role=option]')].map(o=>o.dataset.value);document.body.click();return v;})()`);
+}
+
+/** Picks a value in a settings model picker (button #id). */
+export async function pick(ui,id,value){
+ await waitFor(ui,`(()=>{const b=document.querySelector('#${id}');if(!b||b.disabled)return false;
+  if(!b.parentElement.querySelector('[role=option]'))b.click();
+  const o=[...b.parentElement.querySelectorAll('[role=option]')].find(o=>o.dataset.value===${JSON.stringify(value)});if(!o)return false;o.click();return true;})()`,{label:'pick '+value+' in '+id});
+}
+
 /** Visible text of the page (or of the first element matching selector). */
 export function text(ui,selector='body'){
  return ui.evaluate(`document.querySelector(${JSON.stringify(selector)})?.innerText||''`);

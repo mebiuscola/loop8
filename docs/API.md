@@ -92,7 +92,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 | mode | 内容 | 用到的模型任务 |
 |---|---|---|
-| `preparation` | 课件识别、翻译、导读 | context, pptRecognition, pptTranslation, pptExplanation |
+| `preparation` | 课件识别、翻译、导读 | context, pptRecognition, pptTranslation, pptExplanation, deckReview（整课检查；未单独指定时跟随 pptRecognition。Antigravity 的思考强度随所选连接 `acpThinking`，可为整课检查单设较低强度） |
 | `session` | 本节课讲稿 | context, classroom, transcriptTranslation |
 | `analysis` | 本节课 Deep Dive | context, deepDive |
 | `week` | 整周 Deep Dive | context, weeklyDeepDive |

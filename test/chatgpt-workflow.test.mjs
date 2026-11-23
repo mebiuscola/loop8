@@ -8,7 +8,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {pathToFileURL} from 'node:url';
 import {testPdf} from '../lib/diagnostics.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
-import {openApp,go,waitFor,waitText,click,text} from './helpers/app.mjs';
+import {openApp,go,waitFor,waitText,click,text,pickerOptions} from './helpers/app.mjs';
 
 test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolated page trials',async t=>{
  try{await browserExecutable();}catch{t.skip('No local browser to render the source page');return;}
@@ -138,7 +138,7 @@ test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolat
  assert.equal(await ui.evaluate("(()=>{const card=[...document.querySelectorAll('main section.card')].find(c=>c.querySelector('h2')?.textContent==='ChatGPT 订阅');return [...card.querySelectorAll('button')].map(b=>b.textContent.trim()).filter(t=>/^测试/.test(t)).join(',');})()"),'测试文字,测试 JSON,测试图片');
  await click(ui,'模型分配','.nav button');
  await waitFor(ui,"document.querySelector('#default-model')?.value==='gpt'");
- const choices=await ui.evaluate("[...document.querySelectorAll('select[id^=route-]')].map(s=>[...s.options].map(o=>o.value))");
+ const choices=[];for(const id of await ui.evaluate("[...document.querySelectorAll('button[id^=route-]:not([id$=-thinking])')].map(b=>b.id)"))choices.push(await pickerOptions(ui,id));
  assert(choices.length>=12,'every function can be assigned: '+choices.length);
  for(const options of choices)for(const profileId of ['gpt','api-choice','acp-choice'])assert(options.includes(profileId));
  await wait((await post(route+'/process',{mode:'preparation'})).chatgptJobId);
