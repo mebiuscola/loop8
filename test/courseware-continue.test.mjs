@@ -44,3 +44,34 @@ test('an interrupted courseware guide run can be continued even when an older gu
   await rm(dir,{recursive:true,force:true,maxRetries:4,retryDelay:50});
  }
 });
+
+// While the whole-deck check is still running, its placeholder must not read as "a batch is
+// unfinished, continue to re-check".
+test('a running whole-deck check is not reported as an unfinished batch',async t=>{
+ try{await browserExecutable();}catch{t.skip('Browser unavailable');return;}
+ const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-review-running-')),id='Week_R',folder=path.join(dir,'classes',id);let child,ui;
+ try{
+  const f={id:'deck',role:'ppt',name:'Deck.pptx',stored:'Deck.pptx',size:10,parseStatus:'ready',aiParse:{status:'done',completed:22,total:22}};
+  const p={id,name:'Review week',created:new Date().toISOString(),schemaVersion:2,sourceLayoutVersion:1,outputStorageVersion:1,status:'idle',materialRevision:1,revision:1,bbText:'',sessions:[],files:[f],chat:[],tasks:{}};
+  await mkdir(path.join(folder,'Source'),{recursive:true});await writeFile(path.join(folder,'project.json'),JSON.stringify(p));await writeFile(path.join(folder,'Source','Deck.pptx'),'x');
+  child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,CLASSROOM_DATA:dir,PORT:'0'},windowsHide:true,stdio:['ignore','pipe','pipe']});
+  let log='';child.stdout.on('data',x=>log+=x);child.stderr.on('data',x=>log+=x);
+  for(let i=0;i<150&&!log.includes('http://');i++)await sleep(30);
+  const base=log.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];assert(base,log);
+  ui=await launchRenderer(base,{});
+  await openApp(ui,'/w/'+id+'/overview',{width:1280,height:800});
+  // The page sees the guide in its whole-deck check (a running job cannot be stored across a restart).
+  await ui.evaluate(`(()=>{const real=window.fetch;window.fetch=async(u,o)=>{const r=await real(u,o);if(String(u).endsWith('/api/projects/Week_R')){const p=await r.clone().json();p.files[0].aiParse={status:'running',stage:'整课检查 · 2/3',completed:22,total:22,review:{status:'pending',completed:1,total:3,issues:[{kind:'pending',error:'整课检查尚未完成。'}]}};return new Response(JSON.stringify(p),{headers:{'content-type':'application/json'}});}return r;};return true;})()`);
+  await fetch(base+'/api/projects/'+id+'/bb',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:'refresh'})});
+  const row="[...document.querySelectorAll('main .row')].find(r=>r.innerText.includes('Deck.pptx'))";
+  await waitFor(ui,`(${row})?.innerText.includes('导读生成中')`,{label:'shown as running'});
+  await ui.evaluate(`(${row}).querySelector('details')?.setAttribute('open','');true`);
+  const text=await waitFor(ui,`(${row}).querySelector('details')?.innerText`);
+  assert.match(text,/整课检查 · 2\/3/);
+  assert.doesNotMatch(text,/批未完成|可继续生成以补查/);
+ }finally{
+  await ui?.close();child?.kill();
+  if(child)await new Promise(r=>child.exitCode!==null?r():child.once('exit',r));
+  await rm(dir,{recursive:true,force:true,maxRetries:4,retryDelay:50});
+ }
+});

@@ -156,7 +156,8 @@
     <p><b>{ai.stage||'AI 解析'}</b> · 页面准备 {ai.prepared||0}/{ai.total||'?'} · AI 完成 {ai.completed||0}/{ai.total||'?'}{elapsed?' · '+elapsed+' 秒':''}{ai.model?' · '+ai.model:''}</p>
     {#if ai.error}<p class="error">{ai.error}</p>{/if}
     {#each ai.rounds||[] as r, i (i)}<p>{r.label}{r.model?' · '+r.model:''}：成功 {r.success}/{r.total}{r.status==='not_configured'?'（未配置）':r.status==='configuration_error'?'（配置错误，已暂停）':''}</p>{/each}
-    {#if ai.review}<p>{deckReviewText(ai.review)}</p>{/if}
+    <!-- While the guide is still being made, the check shows as progress above, not as an unfinished batch. -->
+    {#if ai.review&&!running}<p>{deckReviewText(ai.review)}</p>{/if}
     {#if ai.incomplete}<p class="error">{ai.incomplete} 页未能识别，可在 ⋯ › 高级 中重新识别。</p>{/if}
     {#if ai.hints}<p>{ai.hints} 页有解析提示，可在阅读页对照原页核对。</p>{/if}
     {#each ai.notes||[] as note (note)}<p>{note}。安装这些字体后，原页显示会更准确。</p>{/each}
