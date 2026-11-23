@@ -1,7 +1,7 @@
 // What the overview shows for each material: one status and at most one next step
 // (docs/IA-PROPOSAL.md §2 and §3.1). Reading statuses come from lib/reading.ts so the
 // overview and the reading page always say the same thing.
-import type {CoursewareReader,Project,ReferenceReader,Role,SourceFile} from './api';
+import type {CoursewareReader,DeckReview,Project,ReferenceReader,Role,SourceFile} from './api';
 import type {StatusKind} from './status';
 import {coursewareStatus,referenceStatus} from './reading';
 
@@ -67,4 +67,15 @@ export function rolesFor(name:string):Role[]{
 export function sizeText(bytes?:number){
  if(!bytes&&bytes!==0)return '';
  return bytes>=1048576?(bytes/1048576).toFixed(1)+' MB':Math.max(1,Math.round(bytes/1024))+' KB';
+}
+
+/**
+ * The whole-deck check in plain words. Only batches not yet checked are unfinished; edits the
+ * checker suggested but could not verify against the page were simply not applied.
+ */
+export function deckReviewText(review?:DeckReview|null){
+ if(!review)return '';
+ const issues=review.issues||[],open=issues.filter(i=>i.kind==='request'||i.kind==='pending').length,declined=issues.length-open;
+ if(open)return '整课检查有 '+open+' 批未完成，可继续生成以补查';
+ return '整课检查已完成'+(declined?' · '+declined+' 条修改建议未通过核对，没有采用（页面内容不变）':'');
 }

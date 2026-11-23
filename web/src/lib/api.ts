@@ -4,8 +4,11 @@ export type TaskStatus='running'|'complete'|'partial'|'error'|string;
 export interface Task{status:TaskStatus;stage?:string;error?:string;started?:string;finished?:string;warnings?:unknown[];}
 /** Per-file AI parsing progress (lib/ai-material.mjs). Fields are optional: older projects lack some. */
 export interface AiParse{status?:string;stage?:string;error?:string;model?:string;started?:number;finished?:number;prepared?:number;completed?:number;total?:number;drafted?:number;
- missing?:number[];failed?:number[];incomplete?:number;pendingParts?:{page:number;parts:string[]}[];
- rounds?:{label:string;model?:string;success:number;total:number;status?:string}[];review?:{status?:string;completed?:number;total?:number;issues?:{batch?:number;error?:string}[]};}
+ /** incomplete: pages that could not be recognised; hints: pages with unchecked hints; notes: file-wide notes (docs/API.md). */
+ missing?:number[];failed?:number[];incomplete?:number;hints?:number;notes?:string[];pendingParts?:{page:number;parts:string[]}[];
+ rounds?:{label:string;model?:string;success:number;total:number;status?:string}[];review?:DeckReview;}
+/** The whole-deck check. Issues of kind "request"/"pending" are batches not yet checked; the others are suggested edits that failed verification and were not applied. */
+export interface DeckReview{status?:string;completed?:number;total?:number;issues?:{batch?:number;kind?:string;error?:string}[];}
 export interface SourceFile{id:string;name:string;sessionId?:string;role:'bb'|'ppt'|'reading'|'srt'|'audio'|string;parseStatus?:string;progress?:string;
  /** Where a parsed Reading / BB PDF's text came from (absent for older parses and imports). */
  parseSource?:'text-layer'|'mineru';
@@ -15,8 +18,8 @@ export interface MaterialDeletePlan{name:string;sharedOriginal?:boolean;}
 export interface SessionDeletePlan{title:string;subtitles:number;recordings:number;versions?:number;}
 export interface WeekDeletePlan{name:string;sessions:number;materials:number;subtitles:number;recordings:number;}
 export interface PartialResults{source:string;role:string;requiresComplete:boolean;total:number;completed:number;missing:number[];
- review?:{status?:string;issues?:unknown[]}|null;reviewDiagnostics?:unknown[];
- pages:{page:number;status?:string;inspection?:{status?:string};originalText?:{text:string}[];blocks?:{kind:string;text:string}[];learning?:{paragraphs?:{chinese:string}[];closeReading?:string};visualObservations?:{description:string}[];analysis?:string[];uncertainties?:string[]}[];
+ review?:DeckReview|null;reviewDiagnostics?:unknown[];
+ pages:{page:number;status?:string;inspection?:{status?:string;fullPageViewed?:boolean};originalText?:{text:string}[];blocks?:{kind:string;text:string}[];learning?:{paragraphs?:{chinese:string}[];closeReading?:string};visualObservations?:{description:string;uncertainties?:string[]}[];analysis?:string[];uncertainties?:string[]}[];
  pending?:{page:number;parts:string[];draft?:{blocks:{original:string;chinese?:string}[];visuals:{description:string}[];explanation?:string;uncertainties:string[]}|null;diagnostic?:{stage:string;error:string;response:string}|null}[];
  provenance?:({model?:string}|null)[];}
 export interface SessionAudio{fileId:string;srtId:string|null;srtHash:string|null;offsetMs:number;}
@@ -34,8 +37,8 @@ export interface Project extends ProjectSummary{materialRevision?:number;weekly?
  lastUpload?:{kind:'reused'|'renamed'|'stored'|string;name:string;requestedName?:string};files:SourceFile[];sessions:Session[];chat?:ChatMessage[];job?:{mode:string;sessionId?:string;sourceId?:string};}
 export interface InteractiveJob{id:string;status:string;stage?:string;message?:string;}
 export interface ReaderParagraph{english:string;chinese:string;}
-export interface ReaderPage{sourceId:string;pageIndex:number;pageType?:string;paragraphs:ReaderParagraph[];closeReading:string;learningStale?:boolean;inspection?:{status?:string};}
-export interface CoursewareReader{sourceId:string;source:string;sourceHash:string;previewIssue?:string;generated:boolean;stale:boolean;sourceChanged?:boolean;learningStale?:boolean;nativePageCount?:number;pages:ReaderPage[];review?:{status?:string;issues?:unknown[]}|null;}
+export interface ReaderPage{sourceId:string;pageIndex:number;pageType?:string;paragraphs:ReaderParagraph[];closeReading:string;learningStale?:boolean;inspection?:{status?:string};hints?:{text:string;checked:boolean}[];}
+export interface CoursewareReader{sourceId:string;source:string;sourceHash:string;previewIssue?:string;notes?:string[];generated:boolean;stale:boolean;sourceChanged?:boolean;learningStale?:boolean;nativePageCount?:number;pages:ReaderPage[];review?:{status?:string;issues?:unknown[]}|null;}
 export interface ReferenceParagraph{key:string;pageIndex:number|null;printedPage?:string|null;kind:string;english:string;chinese:string;status:'complete'|'pending'|'blocked'|string;}
 export interface ReferenceReader{sourceId:string;source:string;pdf:boolean;generated:boolean;stale:boolean;needsPublish?:boolean;paragraphs:ReferenceParagraph[];summary:{total:number;completed:number;blocked:number};taskStatus?:string;sourceWarnings?:{missingPages?:number[];uncertaintyCount?:number};}
 export type Provider='api'|'antigravity-acp'|'chatgpt-plan';
@@ -140,6 +143,7 @@ export const api={
  aiParse:(id:string,sourceId:string,options:{fresh?:true;retryIssues?:true;retryFailed?:true;teachingPart?:'translation'|'explanation'}={})=>post<unknown>(project(id)+'/ai-parse',{sourceId,...options}),
  aiPartial:(id:string,sourceId:string)=>request<PartialResults>(project(id)+'/ai-partial?source='+encodeURIComponent(sourceId)),
  aiPartialImport:(id:string,sourceId:string)=>post<Project>(project(id)+'/ai-partial-import',{sourceId,confirm:true}),
+ hintCheck:(id:string,sourceId:string,page:number,hint:string,checked:boolean)=>post<{page:number;checked:string[];hints:number}>(project(id)+'/hint-check',{sourceId,page,hint,checked}),
  aiCacheClear:(id:string,sourceId:string)=>post<unknown>(project(id)+'/ai-cache-clear',{sourceId}),
  createSession:(id:string,type:string,title:string,date:string)=>post<{project:Project;session:Session}>(project(id)+'/sessions',{type,title,date}),
  sessionRename:(id:string,sessionId:string,title:string)=>post<Project>(project(id)+'/session-rename',{sessionId,title}),

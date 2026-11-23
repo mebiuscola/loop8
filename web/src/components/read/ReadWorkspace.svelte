@@ -115,6 +115,12 @@
   finally{starting=false;}
  }
 
+ async function checkHint(n:number,hint:string,checked:boolean){
+  if(!file)return;actionError='';
+  try{await api.hintCheck(project.id,file.id,n,hint,checked);await load('ppt',file.id,true);store.refresh();}
+  catch(e){actionError=e instanceof ApiError?e.message:String(e);}
+ }
+
  let menuOpen=$state(false);
  let menuWrap:HTMLElement;
  function outside(event:MouseEvent){if(menuOpen&&menuWrap&&!menuWrap.contains(event.target as Node))menuOpen=false;}
@@ -190,6 +196,7 @@
     {@const n=(current as CR).pages.filter(p=>p.learningStale).length}
     <span class="note">原页渲染方式更新过，{n} 页的导读是按旧版原页生成的，内容通常仍可用。</span>
    {/if}
+   {#each kind==='ppt'&&current?(current as CR).notes||[]:[] as note (note)}<span class="note">{note}。安装这些字体后，原页显示会更准确。</span>{/each}
    {#if kind==='ppt'&&current&&(current as CR).previewIssue}<span class="note">原页预览：{(current as CR).previewIssue}</span>{/if}
    {#if kind==='ref'&&current&&(current as RR).sourceWarnings?.missingPages?.length}<span class="note">有 {(current as RR).sourceWarnings!.missingPages!.length} 页原文未能解析</span>{/if}
    {#if kind==='ppt'&&list.length>1&&action}<span class="note">课件导读按整周生成，会处理本周全部课件。</span>{/if}
@@ -211,7 +218,7 @@
   {:else if kind==='ppt'}
    {#key file?.id}
     <CoursewareReader projectId={project.id} reader={current as CR} columns={columns.ppt} {jump} onpage={onPage}
-     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} onenlarge={i=>openDialog('enlarge',i)}/>
+     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} onenlarge={i=>openDialog('enlarge',i)} oncheck={checkHint}/>
    {/key}
   {:else}
    {#key file?.id}

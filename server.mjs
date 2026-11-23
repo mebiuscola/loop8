@@ -49,6 +49,7 @@ import {analysisState,taskKey} from './lib/workflow.mjs';
 import {pptPages,pageText,pageImages} from './lib/pages.mjs';
 import {bodyParagraphs} from './lib/reader.mjs';
 import {storeSource,originalName,sourcePath,migrateSourceNames} from './lib/storage.mjs';
+import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,readHintChecks,setHintCheck,checkpointFile} from './lib/doubts.mjs';
 import {previewService,pdfInfo} from './lib/preview.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),DATA=process.env.CLASSROOM_DATA||path.join(ROOT,'data');
@@ -143,7 +144,7 @@ const materialWrites=new Map();
 const materialParser=aiMaterialService({root:ROOT,getClass,dirFor:classDir,previews,pageCache,mutate(id,change){if(!materialWrites.has(id))materialWrites.set(id,serialWriter());return materialWrites.get(id)(async()=>{const p=await getClass(id);change(p);await putClass(p);});}});
 function mergeSettings(saved,input){const s={...saved};for(const key of Object.keys(defaults))if(key in input){if(['apiKey','parseApiKey','fallbackApiKey','mineruKey','mineruToken'].includes(key)&&input[key]==='')continue;s[key]=input[key];}s.modelProfiles=mergeModelProfiles(saved,input);if(input.clearApiKey)s.apiKey='';if(input.clearParseApiKey)s.parseApiKey='';if(input.clearFallbackApiKey)s.fallbackApiKey='';if(input.clearMineruKey)s.mineruKey='';if(input.clearMineruToken)s.mineruToken='';return s;}
 async function classes(){const results=[];for(const d of await readdir(path.join(DATA,'classes'),{withFileTypes:true})){if(d.isDirectory()){const p=await json(path.join(DATA,'classes',d.name,'project.json'),null);if(p)results.push(migrateWeek(p));}}for(const pending of await pendingWeeks(DATA)){const index=results.findIndex(p=>p.id===pending.id),value=pendingProject(pending);if(index<0)results.push(value);else results[index]=value;}return results.sort((a,b)=>b.created.localeCompare(a.created));}
-for(const p of await classes()){await recoverMaterialCommits(classDir(p.id),async change=>{const current=await getClass(p.id);change(current);await putClass(current);Object.assign(p,current);});if(p.weekDeletionPending||await materialDeleteJournal(classDir(p.id)))continue;for(const f of p.files)if(f.aiParse?.status==='running'){f.aiParse.status='interrupted';f.aiParse.stage='上次解析被中断，可继续';f.aiParse.tasks={};f.progress='解析中断，可继续';}await migrateSourceNames(p,classDir(p.id),putClass);await migrateOutputs(p,classDir(p.id),putClass);const pending=await json(path.join(classDir(p.id),'.session-delete.json'),null);if(pending){p.deletionPending={sessionId:pending.sessionId,summary:pending.summary};p.status='error';p.stage='课堂删除未完成';}if(p.status==='running'){for(const f of p.files)if(f.parseStatus==='running'&&p.tasks?.[taskKey('reading',f.id)]?.status==='running'){f.parseStatus=f.parsed?'ready':'pending';delete f.progress;}for(const task of Object.values(p.tasks||{}))if(task.status==='running'){task.status='interrupted';task.error='Previous task was interrupted; saved results are available.';}p.status='interrupted';p.stage='上次处理被中断；原始材料和已有输出已保留，可重新处理。';}await recoverMineruArchives(p,classDir(p.id),putClass);await putClass(p);await migrateReadingCitations(p,classDir(p.id));}
+for(const p of await classes()){await recoverMaterialCommits(classDir(p.id),async change=>{const current=await getClass(p.id);change(current);await putClass(current);Object.assign(p,current);});if(p.weekDeletionPending||await materialDeleteJournal(classDir(p.id)))continue;for(const f of p.files)if(f.aiParse?.status==='running'){f.aiParse.status='interrupted';f.aiParse.stage='上次解析被中断，可继续';f.aiParse.tasks={};f.progress='解析中断，可继续';}await migrateSourceNames(p,classDir(p.id),putClass);await migrateOutputs(p,classDir(p.id),putClass);const pending=await json(path.join(classDir(p.id),'.session-delete.json'),null);if(pending){p.deletionPending={sessionId:pending.sessionId,summary:pending.summary};p.status='error';p.stage='课堂删除未完成';}if(p.status==='running'){for(const f of p.files)if(f.parseStatus==='running'&&p.tasks?.[taskKey('reading',f.id)]?.status==='running'){f.parseStatus=f.parsed?'ready':'pending';delete f.progress;}for(const task of Object.values(p.tasks||{}))if(task.status==='running'){task.status='interrupted';task.error='Previous task was interrupted; saved results are available.';}p.status='interrupted';p.stage='上次处理被中断；原始材料和已有输出已保留，可重新处理。';}await recoverMineruArchives(p,classDir(p.id),putClass);await migrateDoubtCounts(p,classDir(p.id));await putClass(p);await migrateReadingCitations(p,classDir(p.id));}
 async function updateStage(p,text){p.stage=text;p.updated=new Date().toISOString();await putClass(p);}
 async function run(p,settings,{origin,fresh=false,mode='preparation',sessionId,sessionIds,sourceId,referenceProvider,signal,onProgress}={}){
  const dir=classDir(p.id);let model;const warnings=[],usedModels={};
@@ -472,6 +473,19 @@ const server=http.createServer(async(req,res)=>{
     await materialParser.start(id,f.id,settings,options);return respond(res,202,{started:true});
    }
    if(action==='ai-parse-cancel'&&method==='POST'){const b=await payload(req);materialParser.cancel(id,b.sourceId);return respond(res,200,{ok:true});}
+   // Marks one hint of one page as checked against the original page (or undoes it). The hint
+   // must be one the page actually has; the parse result itself is not changed. Other background
+   // work (e.g. drawing original pages) does not block it: only this file's own counters change.
+   if(action==='hint-check'&&method==='POST'){
+    if(p.weekDeletionPending)throw Error('本周正在删除。');const b=await payload(req),f=p.files.find(f=>f.id===b.sourceId&&f.aiParse);if(!f)throw Error('材料没有 AI 解析结果。');
+    if(f.aiParse.status==='running')throw Error('这份材料正在解析，完成后再核对。');
+    const checkpoint=await json(checkpointFile(dir,f),null),page=checkpoint?.pages?.find(x=>x?.page===Number(b.page));
+    if(!page||typeof b.hint!=='string'||!pageHints(page).includes(b.hint))throw Error('这一页没有这条提示。');
+    const checks=await setHintCheck(dir,f.id,page.page,b.hint,b.checked!==false);
+    const summary=doubtSummary(checkpoint,f.role==='ppt',checks);
+    await writeProject(id,latest=>{const g=latest.files?.find(x=>x.id===f.id);if(g?.aiParse)Object.assign(g.aiParse,summary);latest.revision=(latest.revision||0)+1;return latest;});
+    return respond(res,200,{sourceId:f.id,page:page.page,checked:checks[String(page.page)]||[],hints:summary.hints});
+   }
    if(action==='ai-partial'&&method==='GET')return respond(res,200,await materialParser.partial(id,url.searchParams.get('source')));
    if(action==='ai-partial-import'&&method==='POST'){editable(id);const b=await payload(req);if(b.confirm!==true)throw Error('请明确确认使用部分结果。');await materialParser.acceptPartial(id,b.sourceId);return respond(res,200,await getClass(id));}
    if(action==='page-image'&&method==='GET'){
@@ -547,7 +561,11 @@ const server=http.createServer(async(req,res)=>{
      if(!pages?.length)pages=f.parsed?(await pptPages(dir,f)).map(page=>({sourceId:f.id,source:f.name,pageIndex:page.pageIndex,paragraphs:bodyParagraphs(page).map(english=>({english,chinese:''})),closeReading:'',inspection:page.externalInspection})):[];
      let renderKey=null,previewIssue='';try{renderKey=(await pageCache.describe(dir,f,await config())).renderKey;}catch(e){previewIssue=e.message;}
      pages=pages.map(page=>({...page,closeReading:compactCoursewareCitations(page.closeReading||'',p.files),learningStale:!!(page.closeReading||page.paragraphs?.some(p=>p.chinese))&&(!page.renderKey||page.renderKey!==renderKey)}));
-     return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,review:f.aiParse?.review||null,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
+     // Each page's hints (doubts from parsing) and whether the reader has checked them; file-wide notes once.
+     const checkpoint=f.aiParse?await json(checkpointFile(dir,f),null):null,checks=checkpoint?await readHintChecks(dir,f.id):{};
+     if(checkpoint)pages=pages.map(page=>{const own=checkpoint.pages?.find(x=>x?.page===page.pageIndex+1),done=checks[String(page.pageIndex+1)]||[];return own?{...page,hints:pageHints(own).map(text=>({text,checked:done.includes(text)}))}:page;});
+     const notes=checkpoint?deckNotes(checkpoint):[];
+     return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,review:f.aiParse?.review||null,notes,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
     }
    }
    if(action==='session-delete-plan'&&method==='GET')return respond(res,200,(await deletionPlan(p,url.searchParams.get('session'),dir)).summary);

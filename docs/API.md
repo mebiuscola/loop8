@@ -40,6 +40,8 @@
 
 项目对象的主要字段：`id, name, created, status, stage, files[], bbText, revision, materialRevision, sessions[], chat[], tasks{}, preparation, generation`。
 
+材料的 AI 解析状态 `files[].aiParse` 中：`incomplete` 是未能识别、需要重试的页数；`hints` 是还有未核对提示的页数；`notes` 是整份材料的附注（如缺少字体）。提示不影响页面状态（2026-11-23 起；旧结果在启动时按已保存的结果重新计数，不重新解析）。
+
 ## 2. 材料
 
 | 方法 | 路径 | 说明 |
@@ -61,6 +63,7 @@
 | POST | `/api/projects/:id/ai-parse` | 体：`{sourceId, fresh?, retryIssues?, retryFailed?, teachingPart?}`。PPT 走 pptRecognition/Translation/Explanation，PDF 走 pdfRecognition。本周已有任务在跑时拒绝 |
 | POST | `/api/projects/:id/ai-parse-cancel` | 体：`{sourceId}` |
 | GET | `/api/projects/:id/ai-partial?source=` | 查看部分结果 |
+| POST | `/api/projects/:id/hint-check` | 把某页的一条提示标为已核对（或撤销）。体：`{sourceId, page, hint, checked?}`；hint 必须是该页现有提示的原文；解析进行中时拒绝。返回 `{page, checked[], hints}` |
 | POST | `/api/projects/:id/ai-partial-import` | 体：`{sourceId, confirm:true}`，采用部分结果 |
 | POST | `/api/projects/:id/ai-cache-clear` | 体：`{sourceId}`，清除 AI 缓存 |
 | POST | `/api/projects/:id/page-cache-clear` | 体：`{sourceId}`，清除 PPT 页面截图缓存（旧前端未使用） |
@@ -105,7 +108,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/projects/:id/reader?version=` | 课件阅读数据（逐页原文、译文、细读） |
+| GET | `/api/projects/:id/reader?version=` | 课件阅读数据（逐页原文、译文、细读）。有 AI 解析时，每页带 `hints:[{text, checked}]`（解析疑点，不影响页面状态），并带整份课件的 `notes`（例如本机缺少课件字体） |
 | GET | `/api/projects/:id/page-image?source=&page=` | 缓存的页面截图 |
 | POST | `/api/projects/:id/preview?source=` | 生成预览。体：`{force?}`，返回 `202` |
 | GET | `/api/projects/:id/preview-status?source=` | 预览状态 |

@@ -8,7 +8,7 @@
  import {api,ApiError,type CoursewareReader,type PartialResults,type Project,type ReferenceReader,type Role,type SourceFile} from '../../lib/api';
  import {courseHref} from '../../lib/router.svelte';
  import {store} from '../../lib/store.svelte';
- import {canChangeRole,isPdf,isPlainBb,materialView,roleLabel,roleTag,sizeText} from '../../lib/overview';
+ import {canChangeRole,deckReviewText,isPdf,isPlainBb,materialView,roleLabel,roleTag,sizeText} from '../../lib/overview';
 
  let {project,file,reader,locked}:{project:Project;file:SourceFile;reader?:CoursewareReader|ReferenceReader|null;locked:boolean}=$props();
 
@@ -69,11 +69,18 @@
  function pageText(n:number){
   const p=partial!.pages.find(x=>x.page===n),pending=partial!.pending?.find(x=>x.page===n),draft=pending?.draft;
   if(p)return [...(p.originalText||[]).map(b=>'[原文] '+b.text),...(p.blocks||[]).map(b=>'['+b.kind+'] '+b.text),...(p.learning?.paragraphs||[]).map(b=>'[中文] '+b.chinese),
-   ...(p.visualObservations||[]).map(v=>'[视觉观察] '+v.description),...(p.analysis||[]).map(t=>'[分析] '+t),p.learning?.closeReading?'[本页解读] '+p.learning.closeReading:'',...(p.uncertainties||[]).map(t=>'[疑点] '+t)].filter(Boolean).join('\n\n');
-  if(draft)return [...draft.blocks.map(b=>'[原文] '+b.original+'\n[中文] '+(b.chinese||'待补译')),...draft.visuals.map(v=>'[视觉观察] '+v.description),draft.explanation?'[解读] '+draft.explanation:'解读待补全',...draft.uncertainties.map(t=>'[疑点] '+t)].join('\n\n');
+   ...(p.visualObservations||[]).map(v=>'[视觉观察] '+v.description),...(p.analysis||[]).map(t=>'[分析] '+t),p.learning?.closeReading?'[本页解读] '+p.learning.closeReading:'',...(p.uncertainties||[]).map(t=>'[提示] '+t)].filter(Boolean).join('\n\n');
+  if(draft)return [...draft.blocks.map(b=>'[原文] '+b.original+'\n[中文] '+(b.chinese||'待补译')),...draft.visuals.map(v=>'[视觉观察] '+v.description),draft.explanation?'[解读] '+draft.explanation:'解读待补全',...draft.uncertainties.map(t=>'[提示] '+t)].join('\n\n');
   return '等待恢复本页内容，已完成的其他页保留。';
  }
- const pageState=(n:number)=>{const p=partial!.pages.find(x=>x.page===n),pending=partial!.pending?.find(x=>x.page===n);return p?(p.inspection?.status||p.status||'已完成'):'待完成：'+(pending?.parts||['识别']).join('、');};
+ // A page either could not be recognised, or is done (possibly with hints to check in the reader).
+ const pageState=(n:number)=>{
+  const p=partial!.pages.find(x=>x.page===n),pending=partial!.pending?.find(x=>x.page===n);
+  if(!p)return '待完成：'+(pending?.parts||['识别']).join('、');
+  if(p.inspection?.status==='unavailable'||p.inspection?.fullPageViewed===false||p.status==='unreadable')return '未能识别';
+  const hints=new Set([...(p.uncertainties||[]),...(p.visualObservations||[]).flatMap(v=>v.uncertainties||[])].filter(t=>!/^(本机缺少课件字体|原课件字体未完整加载)/.test(t))).size;
+  return hints?'已完成 · '+hints+' 条提示':'已完成';
+ };
  const elapsed=$derived(ai?.started?Math.max(0,Math.round(((ai.finished||Date.now())-ai.started)/1000)):0);
  const hasDetails=$derived(!!(ai||file.error||file.progress||file.parseSource));
 </script>
@@ -120,7 +127,7 @@
       <button role="menuitem" disabled={running||locked} onclick={()=>{menuOpen=false;importInput?.click();}}>{file.role==='ppt'?(file.parsed?'更换解析 JSON':'导入解析 JSON'):file.parsed?'更换解析结果':'导入补充解析'}</button>
       {#if ai&&(ai.completed||ai.drafted||ai.failed?.length)}<button role="menuitem" onclick={openPartial}>查看逐页结果</button>{/if}
       {#if ai&&!running&&ai.missing?.length}<button role="menuitem" disabled={locked} onclick={()=>act(()=>api.aiParse(project.id,file.id,{retryFailed:true}),'只为未完成页重新尝试；已完成页保留。')}>再次尝试未完成页</button>{/if}
-      {#if ai&&!running&&ai.incomplete}<button role="menuitem" disabled={locked} onclick={()=>act(()=>api.aiParse(project.id,file.id,{retryIssues:true}),'正在重新识别有疑点的页面。')}>{file.role==='ppt'?'主模型核对疑点页':'备用模型复核疑点页'}</button>{/if}
+      {#if ai&&!running&&ai.incomplete}<button role="menuitem" disabled={locked} onclick={()=>act(()=>api.aiParse(project.id,file.id,{retryIssues:true}),'正在重新识别未能识别的页面。')}>{file.role==='ppt'?'重新识别未能识别的页':'用备用模型重新识别未能识别的页'}</button>{/if}
       {#if pptComplete}
        <button role="menuitem" disabled={running||locked} onclick={()=>act(()=>api.aiParse(project.id,file.id,{teachingPart:'translation'}),'只更新翻译；识别和解读不变。')}>只更新翻译</button>
        <button role="menuitem" disabled={running||locked} onclick={()=>act(()=>api.aiParse(project.id,file.id,{teachingPart:'explanation'}),'只更新解读；识别和翻译不变。')}>只更新解读</button>
@@ -147,8 +154,10 @@
     <p><b>{ai.stage||'AI 解析'}</b> · 页面准备 {ai.prepared||0}/{ai.total||'?'} · AI 完成 {ai.completed||0}/{ai.total||'?'}{elapsed?' · '+elapsed+' 秒':''}{ai.model?' · '+ai.model:''}</p>
     {#if ai.error}<p class="error">{ai.error}</p>{/if}
     {#each ai.rounds||[] as r, i (i)}<p>{r.label}{r.model?' · '+r.model:''}：成功 {r.success}/{r.total}{r.status==='not_configured'?'（未配置）':r.status==='configuration_error'?'（配置错误，已暂停）':''}</p>{/each}
-    {#if ai.review}<p>整课检查 {ai.review.completed||0}/{ai.review.total||0} 批 · {ai.review.status==='complete'?'已完成':'待处理 '+(ai.review.issues?.length||0)+' 项；完整页面已发布'}</p>{/if}
-    {#if ai.incomplete}<p>{ai.incomplete} 页有疑点，可在"查看逐页结果"中核对。</p>{/if}
+    {#if ai.review}<p>{deckReviewText(ai.review)}</p>{/if}
+    {#if ai.incomplete}<p class="error">{ai.incomplete} 页未能识别，可在 ⋯ › 高级 中重新识别。</p>{/if}
+    {#if ai.hints}<p>{ai.hints} 页有解析提示，可在阅读页对照原页核对。</p>{/if}
+    {#each ai.notes||[] as note (note)}<p>{note}。安装这些字体后，原页显示会更准确。</p>{/each}
     {#if ai.pendingParts?.length}<p>待完成：{ai.pendingParts.map(p=>'第 '+p.page+' 页 '+p.parts.join('、')).join('；')}</p>{/if}
    {/if}
   </details>
@@ -173,7 +182,7 @@
 {#if dialog==='partial'&&partial}
  <Modal title={'逐页结果 · '+partial.source} onclose={()=>dialog=''} busy={working} wide>
   <p>已完成 {partial.completed}/{partial.total} 页{partial.missing.length?'；待完成页：'+partial.missing.join('、'):'；全部页面已有结果。'}{partial.requiresComplete?' PPT 全部页面完成后才发布新导读。':''}</p>
-  {#if partial.review}<p>{partial.review.status==='complete'?'整课检查已完成。':'整课检查仍有 '+(partial.review.issues?.length||0)+' 项待核对，不影响已完成页面。'}</p>{/if}
+  {#if partial.review}<p>{deckReviewText(partial.review)}。</p>{/if}
   {#each partial.reviewDiagnostics||[] as d, i (i)}<details class="page"><summary>整课检查诊断 {i+1}</summary><pre>{JSON.stringify(d,null,2)}</pre></details>{/each}
   {#each Array.from({length:partial.total},(_,i)=>i+1) as n (n)}
    {@const pending=partial.pending?.find(x=>x.page===n)}
