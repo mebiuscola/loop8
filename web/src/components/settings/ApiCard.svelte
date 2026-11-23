@@ -70,8 +70,8 @@
         <div class="actions">
          <small class="use">{isSaved(p.id)?(pUsed.length?'用于：'+pUsed.join('、'):'未分配'):'未保存'}</small>
          <span class="spacer"></span>
-         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'ai')}>测试文字 / JSON</button>
-         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'vision')}>测试图片</button>
+         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'ai')} title={'发送一个很短的请求，要求只回复 {"status":"ok"}：检查地址、密钥、模型名称是否可用，以及能否按要求返回 JSON。最长等待 2 分钟。'}>测试文字 / JSON</button>
+         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'vision')} title='发送一张小图表，检查模型能否读出其中两个数值（课件识别要用到图片输入）。最长等待 2 分钟。'>测试图片</button>
          {#if c.models.length>1}
           {#if confirming===p.id}
            <span class="confirm">{pUsed.length?'删除后，'+pUsed.join('、')+'将改用默认模型。':'删除这个模型？'}

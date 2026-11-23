@@ -36,7 +36,7 @@ import {json,save,atomic,safeName,chunks,parseSrt,cueBatches,parseJson,validateS
 import {complete,normalize,setChatGPTPlan} from './lib/adapters.mjs';
 import {createChatGPTPlan} from './lib/chatgpt-plan.mjs';
 import {materialRouteConfigured} from './lib/page-rounds.mjs';
-import {testConnection,diagnosticError} from './lib/diagnostics.mjs';
+import {testConnection,diagnosticError,MODEL_TEST_SECONDS} from './lib/diagnostics.mjs';
 import {pipeline} from './lib/pipeline.mjs';
 import {mapPool,semaphore,serialWriter} from './lib/concurrency.mjs';
 import {parseReadingPdf,parseSourceOf} from './lib/reading-parse.mjs';
@@ -365,8 +365,8 @@ const server=http.createServer(async(req,res)=>{
     return respond(res,202,{...acpJobs.start(options=>['inspect','login'].includes(b.kind)?acpRuntime.run(selected,{...options,action:b.kind}):testConnection(b.kind,selected,async text=>options.onUpdate({sessionUpdate:'status',text},''),options.signal,options).then(message=>({message}))),transport:'acp'});
    }
    if(!['ai','text','json','vision'].includes(b.kind))throw Error('API 连接不使用账号登录。');
-   const job={id:randomUUID(),status:'running',stage:'准备测试',started:Date.now(),updated:Date.now(),limitSeconds:60},controller=new AbortController();diagnostics.set(job.id,job);job.controller=controller;const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(60000)]);
-   testConnection(b.kind,{...selected,parseBaseUrl:selected.baseUrl,parseApiKey:selected.apiKey,parseModel:selected.model},async text=>{job.stage=text;job.updated=Date.now();},signal).then(message=>{job.status='success';job.message=message;}).catch(e=>{job.status='error';job.message=controller.signal.aborted?'\u6d4b\u8bd5\u5df2\u505c\u6b62\u3002':diagnosticError(e,signal,selected);}).finally(()=>job.finished=Date.now());return respond(res,202,{...job,controller:undefined,transport:'api'});
+   const job={id:randomUUID(),status:'running',stage:'准备测试',started:Date.now(),updated:Date.now(),limitSeconds:MODEL_TEST_SECONDS},controller=new AbortController();diagnostics.set(job.id,job);job.controller=controller;const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(MODEL_TEST_SECONDS*1000)]);
+   testConnection(b.kind,{...selected,parseBaseUrl:selected.baseUrl,parseApiKey:selected.apiKey,parseModel:selected.model},async text=>{job.stage=text;job.updated=Date.now();},signal).then(message=>{job.status='success';job.message=message;}).catch(e=>{job.status='error';job.message=controller.signal.aborted?'\u6d4b\u8bd5\u5df2\u505c\u6b62\u3002':diagnosticError(e,signal,selected,'model');}).finally(()=>job.finished=Date.now());return respond(res,202,{...job,controller:undefined,transport:'api'});
   }
   if(parts[0]==='api'&&parts[1]==='settings'&&parts[2]==='test'&&parts[3]&&parts[4]==='cancel'&&method==='POST'){diagnostics.get(parts[3])?.controller?.abort();return respond(res,200,{ok:true});}
   if(url.pathname==='/api/acp/connect'&&method==='POST'){
