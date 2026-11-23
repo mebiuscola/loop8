@@ -19,10 +19,10 @@
  const readHref=$derived(courseHref(project.id,'read',(file.role==='ppt'?'ppt':'ref')+'/'+encodeURIComponent(file.id)+'/p/1'));
  const fail=(e:unknown)=>e instanceof ApiError?e.message:String(e);
 
- let message=$state(''),error=$state(''),working=$state(false);
- async function act(task:()=>Promise<unknown>,done=''){
+ let message=$state(''),error=$state(''),working=$state(false),queuedNow=false;
+ async function act(task:()=>Promise<unknown>,done:string|(()=>string)=''){
   working=true;error='';message='';menuOpen=false;
-  try{await task();message=done;await store.refresh();}
+  try{await task();message=typeof done==='function'?done():done;await store.refresh();}
   catch(e){error=fail(e);}
   finally{working=false;}
  }
@@ -31,7 +31,7 @@
   if(s.kind==='cancel')act(()=>api.cancelAiParse(project.id,file.id),'正在停止；已完成的页面会保留。');
   else if(s.kind==='ai-parse')act(()=>api.aiParse(project.id,file.id),'已开始，可以去阅读已完成的部分。');
   else if(s.kind==='parse-pdf')act(()=>api.parsePdf(project.id,file.id),'已开始解析。');
-  else if(s.kind==='translate')act(()=>api.process(project.id,'reference',file.id),'已开始翻译。');
+  else if(s.kind==='translate')act(async()=>{const p=await api.process(project.id,'reference',file.id);queuedNow=p?.tasks?.['reference:'+file.id]?.status==='queued';},()=>queuedNow?'本周有其他任务正在进行，翻译已排队，完成后自动开始。':'已开始翻译。');
  }
 
  // ---- ⋯ menu ----
@@ -81,6 +81,7 @@
   const hints=new Set([...(p.uncertainties||[]),...(p.visualObservations||[]).flatMap(v=>v.uncertainties||[])].filter(t=>!/^(本机缺少课件字体|原课件字体未完整加载)/.test(t))).size;
   return hints?'已完成 · '+hints+' 条提示':'已完成';
  };
+ const queued=$derived(project.tasks?.['reference:'+file.id]?.status==='queued');
  const elapsed=$derived(ai?.started?Math.max(0,Math.round(((ai.finished||Date.now())-ai.started)/1000)):0);
  const hasDetails=$derived(!!(ai||file.error||file.progress||file.parseSource));
 </script>
@@ -104,7 +105,7 @@
    <a class="btn" href={readHref}>阅读</a>
   {:else if view.step}
    <!-- Next steps use the normal button style: "＋ 添加文件" stays the page's one main button. -->
-   <button class="btn" onclick={step} disabled={working||locked&&view.step.kind!=='cancel'}>{view.step.label}</button>
+   <button class="btn" onclick={step} disabled={working||locked&&view.step.kind!=='cancel'&&view.step.kind!=='translate'}>{view.step.label}</button>
   {/if}
   <div class="menu" bind:this={menuWrap}>
    <button class="btn btn-quiet icon" onclick={()=>menuOpen=!menuOpen} aria-haspopup="menu" aria-expanded={menuOpen} title="更多" aria-label={'更多 · '+file.name}>⋯</button>
@@ -117,6 +118,7 @@
       </div>
      {/if}
      {#if view.step?.kind!=='read'&&(file.role==='ppt'&&reader||file.role==='reading'&&file.parsed)}<a role="menuitem" href={readHref}>阅读</a>{/if}
+     {#if queued}<button role="menuitem" onclick={()=>act(()=>api.queueCancel(project.id,'reference:'+file.id),'已取消排队。')}>取消排队的翻译</button>{/if}
      <div class="menu-sep" role="separator"></div><span class="menu-label">下载</span>
      <a role="menuitem" href={api.sourceUrl(project.id,file.id)}>原件</a>
      {#if file.externalAnalysis}<a role="menuitem" href={api.analysisUrl(project.id,file.id)}>解析 JSON</a>{/if}

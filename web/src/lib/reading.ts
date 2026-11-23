@@ -32,6 +32,7 @@ export function coursewareStatus(project:Project,file:SourceFile,reader?:Coursew
 
 export function referenceStatus(project:Project,file:SourceFile,reader?:ReferenceReader|null):MaterialStatus{
  const task=project.tasks?.['reference:'+file.id];
+ if(task?.status==='queued')return {kind:'running',text:'排队中 · 前面的任务完成后自动开始'};
  if(task?.status==='running')return {kind:'running',text:'翻译中'+(reader?' '+reader.summary.completed+'/'+reader.summary.total:'')};
  if(!reader)return {kind:'idle',text:'读取中…'};
  const {total,completed,blocked}=reader.summary;

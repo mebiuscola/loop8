@@ -88,6 +88,8 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 `POST /api/projects/:id/process`，体：`{mode, sessionId?, sourceId?, referenceProfileId?, engine?}`
 
+**排队（2026-11-23）：** `mode:"reference"` 在本周有其他任务正在写入课程时（课件 AI 解析、PDF 解析、讲稿等生成、原页渲染）不再报"此课程正在处理请求"，而是排队：返回 202 和项目对象，`tasks["reference:<sourceId>"] = {status:"queued", stage, queued, request}`；课程空闲后由服务器按普通启动流程自动开始（所有启动检查照常）。重启后排队的任务会重新排队。`POST /api/projects/:id/queue-cancel`，体：`{key}`，取消排队中的任务（任务变为 `error`，`error:"已取消排队。"`）。
+
 | mode | 内容 | 用到的模型任务 |
 |---|---|---|
 | `preparation` | 课件识别、翻译、导读 | context, pptRecognition, pptTranslation, pptExplanation |
