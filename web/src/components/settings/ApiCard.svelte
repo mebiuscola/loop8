@@ -10,7 +10,7 @@
  let open=$state<string|null>(null);
  const runs=new Map<string,JobRun>();
  const runOf=(id:string)=>{let r=runs.get(id);if(!r){r=new JobRun();runs.set(id,r);}return r;};
- async function check(p:ModelProfile,kind:'ai'|'vision'){
+ async function check(p:ModelProfile,kind:'text'|'json'|'vision'){
   const snap=$state.snapshot(p) as ModelProfile;if(!snap.apiKey)delete snap.apiKey;
   try{await runOf(p.id).run(()=>api.modelTest(kind,snap));}catch{/* shown below */}
  }
@@ -70,8 +70,9 @@
         <div class="actions">
          <small class="use">{isSaved(p.id)?(pUsed.length?'用于：'+pUsed.join('、'):'未分配'):'未保存'}</small>
          <span class="spacer"></span>
-         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'ai')} title={'发送一个很短的请求，要求只回复 {"status":"ok"}：检查地址、密钥、模型名称是否可用，以及能否按要求返回 JSON。最长等待 2 分钟。'}>测试文字 / JSON</button>
-         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'vision')} title='发送一张小图表，检查模型能否读出其中两个数值（课件识别要用到图片输入）。最长等待 2 分钟。'>测试图片</button>
+         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'text')} title="发一句话，要求回复 OK：检查地址、密钥和模型名称能否连通。最长等待 2 分钟。">测试文字</button>
+         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'json')} title="用实际任务的方式请求 JSON：检查这个模型能否用于课件识别、讲稿等任务。最长等待 2 分钟。">测试 JSON</button>
+         <button class="btn" type="button" disabled={run.state.running} onclick={()=>check(p,'vision')} title="发送一张小图表，检查模型能否读出其中两个数值（课件识别要用到图片输入）。最长等待 2 分钟。">测试图片</button>
          {#if c.models.length>1}
           {#if confirming===p.id}
            <span class="confirm">{pUsed.length?'删除后，'+pUsed.join('、')+'将改用默认模型。':'删除这个模型？'}

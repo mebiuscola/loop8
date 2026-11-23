@@ -27,3 +27,25 @@ test('a model test that runs out of time says so, and does not mention MinerU',(
  assert.match(diagnosticError(Error('aborted'),stopped,{}),/MinerU/,'MinerU tests keep their own message');
  assert(MODEL_TEST_SECONDS>=120,'slow models get at least two minutes');
 });
+
+test('API models get separate text and JSON tests; the JSON test uses the JSON mode real tasks use',async()=>{
+ const {testConnection}=await import('../lib/diagnostics.mjs');
+ let supportsJsonMode=true;const seen=[];
+ const server=http.createServer(async(req,res)=>{
+  let body='';for await(const c of req)body+=c;const b=JSON.parse(body);seen.push(!!b.response_format);
+  if(b.response_format&&!supportsJsonMode){res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({error:{message:'response_format is not supported'}}));}
+  const ask=b.messages.at(-1).content;
+  res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:/OK\./.test(ask)?'OK':'{"status":"ok"}'}}]}));
+ });
+ const port=await listenSafe(server);
+ const settings={provider:'api',baseUrl:`http://127.0.0.1:${port}/v1`,apiKey:'k',model:'m',contextChars:100000,maxOutputTokens:2048};
+ const run=(kind,extra={})=>testConnection(kind,{...settings,...extra},async()=>{},new AbortController().signal);
+ try{
+  assert.match(await run('text'),/文字测试通过/);assert.deepEqual(seen,[false],'the text test does not use JSON mode');
+  seen.length=0;assert.match(await run('json'),/接口支持实际任务使用的 JSON 模式/);assert.deepEqual(seen,[true]);
+  supportsJsonMode=false;seen.length=0;
+  await assert.rejects(run('json'),/接口拒绝了实际任务使用的 JSON 模式.*结构化输出/);
+  assert.deepEqual(seen,[true,false],'asked once more without JSON mode to tell the cases apart');
+  seen.length=0;assert.match(await run('json',{structuredOutput:false}),/结构化输出"已关闭/);assert.deepEqual(seen,[false],'with structured output off, real tasks do not use JSON mode either');
+ }finally{await new Promise(r=>server.close(r));}
+});
