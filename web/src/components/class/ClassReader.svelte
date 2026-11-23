@@ -32,28 +32,41 @@
  const posKey=$derived(projectId+'/'+sessionId);
  type Saved={time:number;rate:number;follow:boolean};
  const readAll=():Record<string,Saved>=>{try{return JSON.parse(localStorage.getItem(POS_KEY)||'{}');}catch{return {};}};
- function savePosition(){
-  if(!player)return;
-  const all=readAll();all[posKey]={time:player.currentTime,rate:player.playbackRate,follow};
+ // Until the saved position has been applied to a newly opened recording, nothing is saved:
+ // the new player starts at 0:00, and saving that (pressing play before the recording is ready,
+ // or a jump the format does not accept at once) used to replace the real position for good.
+ let pending=$state<number|null>(null),tries=0;
+ function savePosition(el=player){
+  if(!el||pending!==null)return;
+  const all=readAll();all[posKey]={time:el.currentTime,rate:el.playbackRate,follow};
   try{localStorage.setItem(POS_KEY,JSON.stringify(all));}catch{/* private mode */}
  }
  let rate=$state(1);
  onMount(()=>{
   const saved=readAll()[untrack(()=>posKey)];
-  if(saved){rate=saved.rate||1;follow=saved.follow??true;}
-  return ()=>savePosition();
+  if(saved){rate=saved.rate||1;follow=saved.follow??true;if(Number.isFinite(saved.time)&&saved.time>0)pending=saved.time;}
  });
+ // Leaving the class saves from the player itself (the bound variable may already be cleared).
+ $effect(()=>{const el=player;if(!el)return;return ()=>savePosition(el);});
+ /** Applies the saved position once the recording can seek; checked again on the next updates. */
+ function restore(){
+  if(!player||pending===null||player.readyState<1)return;
+  const target=Math.min(Number.isFinite(player.duration)?player.duration:Infinity,pending);
+  if(tries>0&&Math.abs(player.currentTime-target)<0.5){pending=null;return;}   // a jump was made and landed close enough
+  if(tries++>=5){pending=null;return;}   // the recording does not accept the jump; give up rather than loop
+  player.currentTime=target;
+ }
  function onLoaded(){
   if(!player)return;
   player.playbackRate=rate;
-  const saved=readAll()[posKey];
-  if(saved&&Number.isFinite(saved.time))player.currentTime=Math.min(player.duration||Infinity,saved.time);
+  restore();
   const end=paragraphs.at(-1)!.endMs/1000+offset;
   message=Number.isFinite(player.duration)&&end>player.duration+3?'字幕末段超出录音长度，请核对文件或校准时间。':'';
  }
  let lastSave=0;
  function onTime(){
   if(!player)return;
+  if(pending!==null)restore();
   if(stopAt!==null&&player.currentTime>=stopAt){player.pause();stopAt=null;}
   if(Date.now()-lastSave>5000){lastSave=Date.now();savePosition();}
   if(!playable)return;
@@ -95,11 +108,11 @@
   if(!player||!playable)return;
   const p=paragraphs[index],t=p.startMs/1000+offset;
   if(t<0||Number.isFinite(player.duration)&&t>=player.duration){message='该段时间超出录音范围，请检查录音与字幕，或校准时间。';return;}
-  stopAt=only?p.endMs/1000+offset:null;
+  stopAt=only?p.endMs/1000+offset:null;pending=null;
   player.currentTime=t;follow=true;
   try{await player.play();}catch{message='无法播放这份录音。请检查格式，或点击播放器的播放按钮。';}
  }
- const nudge=(s:number)=>{if(!player)return;stopAt=null;player.currentTime=Math.max(0,Math.min(Number.isFinite(player.duration)?player.duration:Infinity,player.currentTime+s));};
+ const nudge=(s:number)=>{if(!player)return;stopAt=null;pending=null;player.currentTime=Math.max(0,Math.min(Number.isFinite(player.duration)?player.duration:Infinity,player.currentTime+s));};
  function backToCurrent(){follow=true;if(active>=0)scrollTo(active,true);}
  $effect(()=>{if(player)player.playbackRate=rate;});
 
@@ -163,7 +176,7 @@
     </div>
    {/if}
    <audio bind:this={player} src={audio.url} preload="metadata" controls
-    onloadedmetadata={onLoaded} ontimeupdate={onTime} onplay={()=>playing=true} onpause={()=>{playing=false;savePosition();}}
+    onloadedmetadata={onLoaded} ontimeupdate={onTime} onplay={()=>{playing=true;restore();}} oncanplay={restore} onseeked={()=>{if(pending!==null)restore();}} onpause={()=>{playing=false;savePosition();}}
     onerror={()=>message='浏览器无法播放此录音编码，可换成 MP3 或 WAV。'}></audio>
    <div class="tools">
     <button class="btn btn-quiet" type="button" onclick={()=>nudge(-10)}>−10 秒</button>
