@@ -63,10 +63,21 @@ const config=async()=>({...defaults,...await json(path.join(DATA,'settings.json'
 const classDir=id=>{if(!/^Week_[\w\-\u0080-\uffff]+$/.test(id)||id.includes('..'))throw Error('无效项目 ID。');return path.join(DATA,'classes',id);};
 const getClass=async id=>{classDir(id);const pending=await weekJournal(DATA,id);if(pending)return pendingProject(pending);const p=await json(path.join(classDir(id),'project.json'),null);if(!p)throw Error('课程不存在。');return migrateWeek(p);};
 const projectWrites=new Map();
+// Server push (GET /api/events, docs/API.md): every open page keeps one event stream and is told
+// when a course changed, so it reloads only that course instead of polling. Every course write goes
+// through writeProject; requests that may add, rename or remove courses also announce the list.
+const listeners=new Set();
+function broadcast(event){
+ const line='data: '+JSON.stringify(event)+'\n\n';
+ for(const res of listeners){try{res.write(line);}catch{listeners.delete(res);}}
+}
+setInterval(()=>{for(const res of listeners){try{res.write(': keep-alive\n\n');}catch{listeners.delete(res);}}},25000).unref();
+// Which run of a task was acknowledged ("知道了"); the frontend compares with the same rule.
+const taskRun=t=>String(t?.finished||t?.started||'')+'|'+(t?.error||'');
 function writeProject(id,change){
  if(!projectWrites.has(id))projectWrites.set(id,serialWriter());
  const file=path.join(classDir(id),'project.json');
- return projectWrites.get(id)(async()=>save(file,change(await json(file,null))));
+ return projectWrites.get(id)(async()=>{const value=change(await json(file,null)),saved=await save(file,value);broadcast({type:'course',id,revision:value?.revision??null});return saved;});
 }
 const putClass=(p,{replaceChat=false}={})=>{
  const snapshot=JSON.parse(JSON.stringify(p));
@@ -283,6 +294,10 @@ const server=http.createServer(async(req,res)=>{
   const host=req.headers.host;if(!/^127\.0\.0\.1:\d+$/.test(host||''))return respond(res,403,{error:'只允许本机访问。'});
   if(req.headers.origin&&req.headers.origin!==`http://${host}`)return respond(res,403,{error:'拒绝跨站请求。'});
   const url=new URL(req.url,`http://${host}`),parts=url.pathname.split('/').filter(Boolean),method=req.method;
+  if(url.pathname==='/api/events'&&method==='GET'){
+   res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});
+   res.write('retry: 3000\n\n');listeners.add(res);req.on('close',()=>listeners.delete(res));return;
+  }
   if(parts[0]==='api'&&parts[1]==='parse-resource'&&method==='GET'){
    const resource=materialParser.resource(parts[2]);if(!resource)return respond(res,404,{error:'渲染资源已失效'});
    if(parts[3]==='native')return respond(res,200,resource.nativeParts);
@@ -476,6 +491,14 @@ const server=http.createServer(async(req,res)=>{
    // Marks one hint of one page as checked against the original page (or undoes it). The hint
    // must be one the page actually has; the parse result itself is not changed. Other background
    // work (e.g. drawing original pages) does not block it: only this file's own counters change.
+   // "知道了" for a failed or stopped task: kept on the task itself, so every device agrees. It
+   // records which run was acknowledged; a later run that fails again shows up again.
+   if(action==='task-dismiss'&&method==='POST'){
+    const b=await payload(req),key=String(b.key||''),task=p.tasks?.[key];
+    if(!task||!['error','partial'].includes(task.status))throw Error('只能确认失败或停止的任务。');
+    await writeProject(id,latest=>{const t=latest.tasks?.[key];if(t)t.dismissed=taskRun(t);latest.revision=(latest.revision||0)+1;return latest;});
+    return respond(res,200,{key,dismissed:taskRun(task)});
+   }
    if(action==='hint-check'&&method==='POST'){
     if(p.weekDeletionPending)throw Error('本周正在删除。');const b=await payload(req),f=p.files.find(f=>f.id===b.sourceId&&f.aiParse);if(!f)throw Error('材料没有 AI 解析结果。');
     if(f.aiParse.status==='running')throw Error('这份材料正在解析，完成后再核对。');
@@ -696,7 +719,7 @@ const server=http.createServer(async(req,res)=>{
   // Standalone pages' scripts and styles: page rendering (parse-render, pptx-frame) and the citation viewer.
   if(method==='GET'&&['/parse-render.js','/render-audit.js','/pptx-frame.js','/reading-reference.js','/reading-reference.css'].includes(url.pathname)){const file=url.pathname.slice(1);res.writeHead(200,{'Content-Type':file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.css')?'text/css':'text/javascript','Content-Security-Policy':"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; object-src 'none'; frame-src 'self'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff'});return res.end(await readFile(path.join(ROOT,'public',file)));}
   respond(res,404,{error:'未找到页面。'});
- }catch(e){respond(res,400,{error:e.message});}finally{if(lockedId){requestLocks.delete(lockedId);deletingMaterials.delete(lockedId);}}
+ }catch(e){respond(res,400,{error:e.message});}finally{if(lockedId){requestLocks.delete(lockedId);deletingMaterials.delete(lockedId);}if(!['GET','HEAD'].includes(req.method)&&/^\/api\/projects(\/|$)/.test(req.url||''))broadcast({type:'list'});}
 });
 server.requestTimeout=0;
 const port=Number(process.env.PORT||4317);

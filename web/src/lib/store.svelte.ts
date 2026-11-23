@@ -1,14 +1,18 @@
-// The single place that polls the backend (docs/API.md "重做前端时需要留意" 1 and 2).
+// The single place that keeps course data fresh (docs/API.md "重做前端时需要留意" 1 and 2).
+// The server announces every course change on one event stream (GET /api/events); the page then
+// reloads only what changed. A slow refresh remains as a safety net, and while the stream is down
+// the page falls back to polling as before.
 import {api,ApiError,type Project,type ProjectSummary,type Task} from './api';
 import {courseStatus,taskStatus,taskLabel,type StatusKind} from './status';
 
 export interface TaskRow{courseId:string;courseName:string;key:string;action:string;target:string;kind:StatusKind;detail:string;time?:string;}
 
-const FAST=3000,SLOW=15000;
-// Failed or stopped tasks the user has acknowledged ("知道了"), per browser. Each entry records
-// which run of the task was acknowledged, so a later run that fails again shows up again.
-const DISMISSED_KEY='classroom.next.dismissedTasks';
+const FAST=3000,SLOW=15000,SAFETY=60000,SETTLE=250;
+// "知道了" is stored on the task by the server (task.dismissed) so every device agrees. It records
+// which run was acknowledged (same rule as the server's taskRun): a later failed run shows again.
 const runOf=(task:Task)=>String(task.finished||task.started||'')+'|'+(task.error||'');
+// Acknowledgements kept in this browser by an earlier version; moved to the server once.
+const OLD_DISMISSED_KEY='classroom.next.dismissedTasks';
 
 class Store{
  projects=$state<ProjectSummary[]>([]);
@@ -22,23 +26,42 @@ class Store{
  private timer:ReturnType<typeof setTimeout>|undefined;
  private ticks=0;      // only the newest polling round schedules the next one
  private loads=0;      // only the newest course request may replace `current`
- dismissed=$state<Record<string,string>>((()=>{try{return JSON.parse(localStorage.getItem(DISMISSED_KEY)||'{}');}catch{return {};}})());
+ private events:EventSource|null=null;
+ private settle:ReturnType<typeof setTimeout>|undefined;
+ /** True while the server's event stream is connected. */
+ live=$state(false);
 
  get anyRunning(){return this.projects.some(p=>courseStatus(p)==='running');}
 
  /** The sidebar dot of a course; acknowledged failures no longer ask for attention. */
  courseState(p:ProjectSummary){return courseStatus(p,(key,task)=>this.isDismissed(p.id,key,task));}
- isDismissed(courseId:string,key:string,task:Task){return this.dismissed[courseId+'|'+key]===runOf(task);}
- dismiss(row:TaskRow){
-  const task=this.projects.find(p=>p.id===row.courseId)?.tasks?.[row.key];if(!task)return;
-  const next={...this.dismissed,[row.courseId+'|'+row.key]:runOf(task)};
-  // Forget acknowledgements of tasks that no longer exist.
-  for(const k of Object.keys(next)){const [id,...rest]=k.split('|');if(!this.projects.some(p=>p.id===id&&p.tasks?.[rest.join('|')]))delete next[k];}
-  this.dismissed=next;
-  try{localStorage.setItem(DISMISSED_KEY,JSON.stringify(next));}catch{/* private mode */}
- }
+ isDismissed(_courseId:string,_key:string,task:Task){return !!task.dismissed&&task.dismissed===runOf(task);}
+ async dismiss(row:TaskRow){await api.taskDismiss(row.courseId,row.key);await this.refresh();}
 
- start(){this.tick();}
+ start(){this.connect();this.tick().then(()=>this.moveOldDismissals());}
+
+ /** Listens to the server's change announcements; reconnects by itself (EventSource). */
+ private connect(){
+  if(typeof EventSource==='undefined')return;
+  const events=new EventSource(api.eventsUrl());this.events=events;
+  events.onopen=()=>{const was=this.live;this.live=true;if(!was)this.soon();};   // catch up on anything missed while away
+  events.onerror=()=>{this.live=false;};
+  events.onmessage=e=>{
+   let event:{type?:string;id?:string}={};try{event=JSON.parse(e.data);}catch{return;}
+   if(event.type==='list'||event.type==='course')this.soon();
+  };
+ }
+ /** Several changes in a row (a task saving its progress) lead to one reload. */
+ private soon(){clearTimeout(this.settle);this.settle=setTimeout(()=>this.tick(),SETTLE);}
+
+ private async moveOldDismissals(){
+  let old:Record<string,string>={};try{old=JSON.parse(localStorage.getItem(OLD_DISMISSED_KEY)||'{}');}catch{return;}
+  for(const [k,run] of Object.entries(old)){
+   const [id,...rest]=k.split('|'),key=rest.join('|'),task=this.projects.find(p=>p.id===id)?.tasks?.[key];
+   if(task&&runOf(task)===run&&!task.dismissed)await api.taskDismiss(id,key).catch(()=>{});
+  }
+  try{localStorage.removeItem(OLD_DISMISSED_KEY);}catch{/* private mode */}
+ }
 
  async refresh(){
   try{
@@ -60,7 +83,8 @@ class Store{
   const n=++this.ticks;
   await this.refresh();
   if(n!==this.ticks)return;   // a newer round started meanwhile and keeps the one polling loop
-  this.timer=setTimeout(()=>this.tick(),this.anyRunning?FAST:SLOW);
+  // With the event stream, only a slow safety refresh; without it, poll as before.
+  this.timer=setTimeout(()=>this.tick(),this.live?SAFETY:this.anyRunning?FAST:SLOW);
  }
 
  /** Switch the course whose full object is kept fresh. */

@@ -10,7 +10,7 @@
 - 错误统一返回 `{ "error": "中文说明" }`，HTTP 状态非 2xx。前端直接把 `error` 显示给用户。
 - `409`：材料或结果正在提交（存在 `.output-transaction.json` 或材料提交日志）。提示用户稍后重试或重启。
 - 长任务返回 `202` 和一个任务对象，之后用对应的 `jobs` 接口轮询或取消。
-- 进度：前端每隔几秒 `GET /api/projects/:id`，读取 `status`、`stage`、`files[].progress`、`tasks`。目前没有 SSE 或 WebSocket。
+- 进度与变化通知：`GET /api/events` 是服务器推送的事件流（SSE，`text/event-stream`）。每次课程数据保存后推送 `{type:"course", id, revision}`；任何修改 `/api/projects…` 的请求结束后推送 `{type:"list"}`（新建、改名、删除课程）。前端收到后重新读取 `GET /api/projects` 与当前课程，读取 `status`、`stage`、`files[].progress`、`tasks`。连接断开时浏览器自动重连（`retry: 3000`），前端在重连后补读一次，并在断开期间改回轮询。每 25 秒有一行注释保持连接。将来部署到服务器时，这个接口和其他接口一样需要登录保护；经过反向代理时要关闭缓冲（已发送 `X-Accel-Buffering: no`）。
 - 凭据永不返回：设置接口会去掉 `apiKey`、`mineruToken` 等，只返回 `hasXxx` 布尔值。
 
 记号：`:id` 是每周课程的 id（如 `Week_DebateW4_95c62a5a`），需要 `encodeURIComponent`。
@@ -63,6 +63,7 @@
 | POST | `/api/projects/:id/ai-parse` | 体：`{sourceId, fresh?, retryIssues?, retryFailed?, teachingPart?}`。PPT 走 pptRecognition/Translation/Explanation，PDF 走 pdfRecognition。本周已有任务在跑时拒绝 |
 | POST | `/api/projects/:id/ai-parse-cancel` | 体：`{sourceId}` |
 | GET | `/api/projects/:id/ai-partial?source=` | 查看部分结果 |
+| POST | `/api/projects/:id/task-dismiss` | 确认（"知道了"）一个失败或停止的任务。体：`{key}`。记在任务上：`tasks[key].dismissed` = 被确认的那次运行（`finished||started` + `|` + `error`）；同一任务再次运行后失败会重新显示 |
 | POST | `/api/projects/:id/hint-check` | 把某页的一条提示标为已核对（或撤销）。体：`{sourceId, page, hint, checked?}`；hint 必须是该页现有提示的原文；解析进行中时拒绝。返回 `{page, checked[], hints}` |
 | POST | `/api/projects/:id/ai-partial-import` | 体：`{sourceId, confirm:true}`，采用部分结果 |
 | POST | `/api/projects/:id/ai-cache-clear` | 体：`{sourceId}`，清除 AI 缓存 |

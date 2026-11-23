@@ -1,7 +1,7 @@
 // The only module that talks to the backend. Every call here is listed in docs/API.md.
 
 export type TaskStatus='running'|'complete'|'partial'|'error'|string;
-export interface Task{status:TaskStatus;stage?:string;error?:string;started?:string;finished?:string;warnings?:unknown[];}
+export interface Task{status:TaskStatus;stage?:string;error?:string;started?:string;finished?:string;warnings?:unknown[];/** Run acknowledged with "知道了" (server rule taskRun). */dismissed?:string;}
 /** Per-file AI parsing progress (lib/ai-material.mjs). Fields are optional: older projects lack some. */
 export interface AiParse{status?:string;stage?:string;error?:string;model?:string;started?:number;finished?:number;prepared?:number;completed?:number;total?:number;drafted?:number;
  /** incomplete: pages that could not be recognised; hints: pages with unchecked hints; notes: file-wide notes (docs/API.md). */
@@ -73,6 +73,9 @@ const post=<T>(path:string,body:unknown)=>request<T>(path,{method:'POST',headers
 const project=(id:string)=>'/api/projects/'+encodeURIComponent(id);
 
 export const api={
+ /** Server push of course changes (GET /api/events). */
+ eventsUrl:()=>'/api/events',
+ taskDismiss:(id:string,key:string)=>post<{key:string;dismissed:string}>(project(id)+'/task-dismiss',{key}),
  listProjects:()=>request<ProjectSummary[]|{projects:ProjectSummary[]}>('/api/projects').then(r=>Array.isArray(r)?r:r.projects),
  getProject:(id:string)=>request<Project>(project(id)),
  createProject:(name:string)=>post<Project>('/api/projects',{name}),
