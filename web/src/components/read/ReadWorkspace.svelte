@@ -6,10 +6,8 @@
  import CoursewareReader from './CoursewareReader.svelte';
  import ReferenceReader from './ReferenceReader.svelte';
  import RetryDialog from './RetryDialog.svelte';
- import OriginalPage from './OriginalPage.svelte';
  import PreviewDialog from './PreviewDialog.svelte';
  import TrialDialog from './TrialDialog.svelte';
- import Modal from '../Modal.svelte';
  import {CoursePreview} from '../../lib/preview.svelte';
  import {readerCache,readerSignature} from '../../lib/reader-cache.svelte';
  import {api,ApiError,type RedoPart,type Project,type CoursewareReader as CR,type ReferenceReader as RR} from '../../lib/api';
@@ -148,8 +146,8 @@
   if(d.kind==='pdf')return d.engine==='原始 PDF'?'':'原页按 PDF 绘制'+(d.engine?'（'+d.engine+'）':'')+'。';
   return '';
  });
- let dialog=$state<''|'preview'|'trial'|'enlarge'|'retry'>(''),dialogPage=$state(0);
- function openDialog(kind:'preview'|'trial'|'enlarge'|'retry',pageIndex=page-1){menuOpen=false;dialogPage=pageIndex;dialog=kind;}
+ let dialog=$state<''|'preview'|'trial'|'retry'>(''),dialogPage=$state(0);
+ function openDialog(kind:'preview'|'trial'|'retry',pageIndex=page-1){menuOpen=false;dialogPage=pageIndex;dialog=kind;}
 </script>
 
 <svelte:window onclick={outside} onkeydown={e=>{if(e.key==='Escape')menuOpen=false;}}/>
@@ -234,7 +232,7 @@
   {:else if kind==='ppt'}
    {#key file?.id}
     <CoursewareReader projectId={project.id} reader={current as CR} columns={columns.ppt} {jump} onpage={onPage}
-     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} onenlarge={i=>openDialog('enlarge',i)} oncheck={checkHint} {generating} onredo={redo} ontrial={i=>openDialog('trial',i)}/>
+     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} oncheck={checkHint} {generating} onredo={redo} ontrial={i=>openDialog('trial',i)}/>
    {/key}
   {:else}
    {#key file?.id}
@@ -247,11 +245,6 @@
 {#if dialog==='preview'&&preview}<PreviewDialog {preview} projectId={project.id} onclose={()=>dialog=''}/>{/if}
 {#if dialog==='retry'&&file&&kind==='ref'}<RetryDialog projectId={project.id} sourceId={file.id} fileName={file.name} remaining={untranslated} onclose={()=>dialog=''} onstarted={()=>{dialog='';store.refresh();}}/>{/if}
 {#if dialog==='trial'&&file}<TrialDialog projectId={project.id} sourceId={file.id} fileName={file.name} pageIndex={dialogPage} onclose={()=>dialog=''}/>{/if}
-{#if dialog==='enlarge'&&preview&&current&&kind==='ppt'}
- <Modal title={'第 '+(dialogPage+1)+' 页 · 原页'} onclose={()=>dialog=''} wide closeLabel="关闭">
-  <OriginalPage projectId={project.id} reader={current as CR} pageIndex={dialogPage} mode={preview.mode} pdf={preview.pdf} pptx={preview.pptx} reload={preview.reload} large/>
- </Modal>
-{/if}
 
 <style>
  .read{display:flex;flex-direction:column;height:100%;min-height:0;}

@@ -52,7 +52,7 @@ import {bodyParagraphs} from './lib/reader.mjs';
 import {storeSource,originalName,sourcePath,migrateSourceNames} from './lib/storage.mjs';
 import {UNSAFE_PORTS} from './lib/ports.mjs';
 import {setAcpTraceDir,listTraces,tracePath,clearTraces} from './lib/acp-trace.mjs';
-import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,readHintChecks,setHintCheck,checkpointFile,doubtRules} from './lib/doubts.mjs';
+import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,exactPages,readHintChecks,setHintCheck,checkpointFile,doubtRules} from './lib/doubts.mjs';
 import {previewService,pdfInfo} from './lib/preview.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),DATA=process.env.CLASSROOM_DATA||path.join(ROOT,'data');
@@ -585,10 +585,10 @@ const server=http.createServer(async(req,res)=>{
    if(action==='hint-check'&&method==='POST'){
     if(p.weekDeletionPending)throw Error('本周正在删除。');const b=await payload(req),f=p.files.find(f=>f.id===b.sourceId&&f.aiParse);if(!f)throw Error('材料没有 AI 解析结果。');
     if(f.aiParse.status==='running')throw Error('这份材料正在解析，完成后再核对。');
-    const checkpoint=await json(checkpointFile(dir,f),null),page=checkpoint?.pages?.find(x=>x?.page===Number(b.page));
-    if(!page||typeof b.hint!=='string'||!pageHints(page).includes(b.hint))throw Error('这一页没有这条提示。');
+    const checkpoint=await json(checkpointFile(dir,f),null),page=checkpoint?.pages?.find(x=>x?.page===Number(b.page)),exact=f.role==='ppt'&&exactPages(await previews.status(dir,f).catch(()=>null));
+    if(!page||typeof b.hint!=='string'||!pageHints(page,{exact}).includes(b.hint))throw Error('这一页没有这条提示。');
     const checks=await setHintCheck(dir,f.id,page.page,b.hint,b.checked!==false);
-    const summary=doubtSummary(checkpoint,f.role==='ppt',checks);
+    const summary=doubtSummary(checkpoint,f.role==='ppt',checks,{exact});
     await writeProject(id,latest=>{const g=latest.files?.find(x=>x.id===f.id);if(g?.aiParse)Object.assign(g.aiParse,summary);latest.revision=(latest.revision||0)+1;return latest;});
     return respond(res,200,{sourceId:f.id,page:page.page,checked:checks[String(page.page)]||[],hints:summary.hints});
    }
@@ -671,13 +671,15 @@ const server=http.createServer(async(req,res)=>{
      // (checked by hash above); finishing them raises the week's material revision, so comparing with
      // the older whole-week guide would call them outdated again forever. Only the original counts.
      if(!pages?.length)pages=f.parsed?(await pptPages(dir,f)).map(page=>({sourceId:f.id,source:f.name,pageIndex:page.pageIndex,paragraphs:bodyParagraphs(page).map(english=>({english,chinese:''})),closeReading:'',inspection:page.externalInspection})):[];
-     startSlides(dir,f,await config());const drawnBy=slideEngine(await previews.status(dir,f),f);
+     startSlides(dir,f,await config());const slideState=await previews.status(dir,f),drawnBy=slideEngine(slideState,f),exact=exactPages(slideState);
      let renderKey=null,previewIssue='';try{renderKey=(await pageCache.describe(dir,f,await config())).renderKey;}catch(e){previewIssue=e.message;}
      pages=pages.map(page=>({...page,closeReading:compactCoursewareCitations(page.closeReading||'',p.files),learningStale:!!(page.closeReading||page.paragraphs?.some(p=>p.chinese))&&(!page.renderKey||page.renderKey!==renderKey)}));
      // Each page's hints (doubts from parsing) and whether the reader has checked them; file-wide notes once.
      const checkpoint=f.aiParse?await json(checkpointFile(dir,f),null):null,checks=checkpoint?await readHintChecks(dir,f.id):{};
-     if(checkpoint)pages=pages.map(page=>{const own=checkpoint.pages?.find(x=>x?.page===page.pageIndex+1),done=checks[String(page.pageIndex+1)]||[];return own?{...page,hints:pageHints(own).map(text=>({text,checked:done.includes(text)}))}:page;});
-     const notes=checkpoint?deckNotes(checkpoint):[];
+     if(checkpoint)pages=pages.map(page=>{const own=checkpoint.pages?.find(x=>x?.page===page.pageIndex+1),done=checks[String(page.pageIndex+1)]||[];return own?{...page,hints:pageHints(own,{exact}).map(text=>({text,checked:done.includes(text)}))}:page;});
+     const notes=checkpoint?deckNotes(checkpoint,{exact}):[];
+     // Counts shown on the overview follow the same rule: recount once the slides are drawn exactly.
+     if(checkpoint&&f.aiParse&&f.aiParse.status!=='running'){const summary=doubtSummary(checkpoint,true,checks,{exact});if(summary.hints!==f.aiParse.hints||JSON.stringify(summary.notes)!==JSON.stringify(f.aiParse.notes||[]))await writeProject(id,latest=>{const g=latest.files?.find(x=>x.id===f.id);if(g?.aiParse&&g.aiParse.status!=='running')Object.assign(g.aiParse,{hints:summary.hints,notes:summary.notes});latest.revision=(latest.revision||0)+1;return latest;});}
      return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,drawnBy,review:f.aiParse?.review||null,notes,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!learningReady&&!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
     }
    }

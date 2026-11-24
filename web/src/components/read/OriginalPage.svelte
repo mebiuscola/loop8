@@ -11,9 +11,9 @@
  import {api,type CoursewareReader} from '../../lib/api';
  import {drawPage,type PdfDoc} from '../../lib/pdf';
 
- let {projectId,reader,pageIndex,mode,pdf,pptx,reload=0,large=false}:{
+ let {projectId,reader,pageIndex,mode,pdf,pptx,reload=0}:{
   projectId:string;reader:CoursewareReader;pageIndex:number;mode:PreviewMode;
-  pdf?:Promise<PdfDoc>|null;pptx?:Promise<ArrayBuffer>|null;reload?:number;large?:boolean;
+  pdf?:Promise<PdfDoc>|null;pptx?:Promise<ArrayBuffer>|null;reload?:number;
  }=$props();
 
  let host=$state<HTMLElement>();
@@ -25,7 +25,6 @@
  // being read are ready before they are reached) and then kept: moving back and forth never draws
  // it again. Only the live PPTX preview, which is heavy, is released when the page leaves the view.
  onMount(()=>{
-  if(large){near=true;return;}
   const observer=new IntersectionObserver(([e])=>{
    if(e.isIntersecting)near=true;
    else if(mode==='browser')near=false;
@@ -81,7 +80,7 @@
  let imageUrl=$derived(api.pageImageUrl(projectId,reader.sourceId,pageIndex,reader.sourceHash)+(reader.renderKey?'&rk='+encodeURIComponent(reader.renderKey):'')+(reload?'&r='+reload:''));
 </script>
 
-<div class="original" class:large bind:this={host} style:--aspect={aspect}>
+<div class="original" bind:this={host} style:--aspect={aspect}>
  {#if mode==='cached'}
   <figure class="slide" class:ready={phase==='ready'}>
    {#if near}<img src={imageUrl} alt={'课件原页 第 '+n+' 页'} decoding="async" onload={()=>phase='ready'} onerror={()=>{phase='error';note='原页预览读取失败。可在"⋯ › 原页预览"中改用其他方式。';}}/>{/if}

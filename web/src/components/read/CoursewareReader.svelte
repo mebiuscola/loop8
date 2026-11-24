@@ -5,14 +5,14 @@
  import type {PdfDoc} from '../../lib/pdf';
  import {boldParts} from '../../lib/reading';
 
- let {projectId,reader,columns,jump,onpage,mode='cached',pdf=null,pptx=null,reload=0,onenlarge,pageCount=0,oncheck,generating=null,onredo,ontrial}:{
+ let {projectId,reader,columns,jump,onpage,mode='cached',pdf=null,pptx=null,reload=0,pageCount=0,oncheck,generating=null,onredo,ontrial}:{
   /** Redoes one page (whole, translation or explanation); absent while redo is not possible. */
   onredo?:(pageIndex:number,part:RedoPart)=>void;ontrial?:(pageIndex:number)=>void;
   /** While this courseware is being generated: pages in progress (0-based index → current step). */
   generating?:Record<string,{phase?:string}>|null;projectId:string;reader:CoursewareReader;columns:{original:boolean;translation:boolean;notes:boolean};jump:{page:number;seq:number};onpage:(n:number)=>void;
   /** Marks a parse hint of a page as checked against the original (or undoes it). */
   oncheck?:(page:number,hint:string,checked:boolean)=>Promise<void>;
-  mode?:PreviewMode;pdf?:Promise<PdfDoc>|null;pptx?:Promise<ArrayBuffer>|null;reload?:number;onenlarge?:(pageIndex:number)=>void;
+  mode?:PreviewMode;pdf?:Promise<PdfDoc>|null;pptx?:Promise<ArrayBuffer>|null;reload?:number;
   /** Pages in the original file; before any parsing the original pages are still shown. */
   pageCount?:number}=$props();
 
@@ -102,12 +102,10 @@
   <section data-page={n} aria-label={'第 '+n+' 页'}>
    <header class="pagehead">第 {n} 页{#if p.pageType&&pageTypeLabel[p.pageType]} · {pageTypeLabel[p.pageType]}{/if}
     {#if generating}{@const t=generating[String(p.pageIndex)]}{#if t}<span class="gen">正在生成{t.phase?' · '+t.phase:''}</span>{:else if p.unparsed}<span class="gen wait">等待生成</span>{/if}{/if}
-    {#if columns.original&&onenlarge}<button class="enlarge" type="button" onclick={()=>onenlarge(p.pageIndex)} title="放大原页">放大</button>{/if}
     <span class="pagemenu">
-     <button class="enlarge" type="button" aria-haspopup="menu" aria-expanded={menuPage===p.pageIndex} aria-label={'第 '+n+' 页操作'} onclick={()=>menuPage=menuPage===p.pageIndex?-1:p.pageIndex}>⋯</button>
+     <button class="pagebtn" type="button" aria-haspopup="menu" aria-expanded={menuPage===p.pageIndex} aria-label={'第 '+n+' 页操作'} onclick={()=>menuPage=menuPage===p.pageIndex?-1:p.pageIndex}>⋯</button>
      {#if menuPage===p.pageIndex}
       <span class="menu-list" role="menu">
-       {#if onenlarge}<button role="menuitem" onclick={()=>{menuPage=-1;onenlarge(p.pageIndex);}}>放大核对原页</button>{/if}
        {#if ontrial}<button role="menuitem" onclick={()=>{menuPage=-1;ontrial(p.pageIndex);}}>试解析本页…</button>{/if}
        <span class="menu-sep" role="separator"></span>
        {#each redoItems as [part,label] (part)}
@@ -169,16 +167,14 @@
  .gen.wait{background:var(--sand-100);color:var(--fg-muted);}
  /* Page tools sit at the right end of the page header. */
  .pagemenu{position:relative;margin-left:auto;}
- .pagehead>.enlarge{margin-left:auto;}
- .pagehead>.enlarge+.pagemenu{margin-left:0;}
  .menu-list{position:absolute;right:0;top:calc(100% + var(--space-1));z-index:5;min-width:220px;padding:var(--space-1);display:flex;flex-direction:column;background:var(--bg-raised);border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-panel);font-weight:normal;}
  .menu-list button{padding:var(--space-2) var(--space-3);border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-size:var(--text-sm);color:var(--fg);}
  .menu-list button:hover:not(:disabled){background:var(--sand-100);}
  .menu-list button:disabled{color:var(--fg-subtle);}
  .menu-sep{height:1px;margin:var(--space-1) 0;background:var(--line);}
  .menu-note{padding:var(--space-1) var(--space-3);font-size:var(--text-xs);color:var(--fg-muted);}
- .enlarge{padding:0 var(--space-2);height:24px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-raised);font-size:var(--text-xs);color:var(--fg-muted);}
- .enlarge:hover{color:var(--fg);border-color:var(--line-strong);}
+ .pagebtn{padding:0 var(--space-2);height:24px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-raised);font-size:var(--text-xs);color:var(--fg-muted);}
+ .pagebtn:hover{color:var(--fg);border-color:var(--line-strong);}
  .para{padding:0 0 var(--space-3) var(--space-3);border-left:2px solid var(--kind-translation);margin-bottom:var(--space-3);}
  .en{margin:0 0 var(--space-1);font-family:var(--font-reading);font-size:var(--text-md);color:var(--ink-700);}
  .zh{margin:0;font-size:var(--text-md);}
