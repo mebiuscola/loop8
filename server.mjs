@@ -354,7 +354,7 @@ function validateSettings(s){validateModelRouting(s);
 const server=http.createServer(async(req,res)=>{
  let lockedId;
  try{
-  const host=req.headers.host;if(!/^127\.0\.0\.1:\d+$/.test(host||''))return respond(res,403,{error:'只允许本机访问。'});
+  const host=req.headers.host;if(!/^(?:127\.0\.0\.1|localhost):\d+$/i.test(host||''))return respond(res,403,{error:'只允许本机访问。'});
   if(req.headers.origin&&req.headers.origin!==`http://${host}`)return respond(res,403,{error:'拒绝跨站请求。'});
   const url=new URL(req.url,`http://${host}`),parts=url.pathname.split('/').filter(Boolean),method=req.method;
   if(url.pathname==='/api/events'&&method==='GET'){
