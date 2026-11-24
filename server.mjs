@@ -14,7 +14,7 @@ import {recoverMaterialCommits,materialCommitPending} from './lib/material-commi
 import {budgetObject} from './lib/context-budget.mjs';
 import {readerPage,LEARNING_SCHEMA} from './lib/ppt-learning.mjs';
 import {compactCoursewareCitations,compactCoursewareGuide} from './lib/courseware-citations.mjs';
-import {pageCacheService} from './lib/page-cache.mjs';
+import {pageCacheService,sameImages} from './lib/page-cache.mjs';
 import {recoverMineruArchives} from './lib/mineru-recovery.mjs';
 import {aiMaterialService,materialSettings} from './lib/ai-material.mjs';
 import {localFontService,presentationFonts} from './lib/fonts.mjs';
@@ -185,6 +185,18 @@ async function runReading(job,file,settings,force){
   job.finished=true;
  });
 }
+// Whether a deck's saved analysis was made from other page images (lib/ppt-quality.mjs learningFreshness),
+// remembered per report version: every slide image request needs it, and the report can be large.
+// images: the page-cache result for the page (renderKey, imageKey, exact, renderBasis, sourceHash).
+const staleMemo=new Map();
+async function learningStaleFor(dir,f,images){
+ if(!f.externalAnalysis)return false;
+ const file=path.join(dir,'Parsed',f.externalAnalysis),info=await stat(file).catch(()=>null);if(!info)return false;
+ const key=images.renderKey+'|'+images.imageKey,known=staleMemo.get(file);if(known&&known.mtime===info.mtimeMs&&known.size===info.size&&known.key===key)return known.stale;
+ const report=await json(file,null),stale=report?learningFreshness(report,images).stale:false;
+ staleMemo.set(file,{mtime:info.mtimeMs,size:info.size,key,stale});if(staleMemo.size>64)staleMemo.delete(staleMemo.keys().next().value);
+ return stale;
+}
 const outputNames=['Class_Script_Bilingual.md','Deep_Dive.md'];
 const diagnostics=new Map(),previews=previewService(ROOT),localFonts=localFontService();
 // Courseware slides are drawn by PowerPoint (lib/preview.mjs), started automatically for PPT/PPTX.
@@ -209,17 +221,6 @@ const materialParser=aiMaterialService({root:ROOT,getClass,dirFor:classDir,previ
 function mergeSettings(saved,input){const s={...saved};for(const key of Object.keys(defaults))if(key in input){if(['apiKey','parseApiKey','fallbackApiKey','mineruKey','mineruToken'].includes(key)&&input[key]==='')continue;s[key]=input[key];}s.modelProfiles=mergeModelProfiles(saved,input);if(input.clearApiKey)s.apiKey='';if(input.clearParseApiKey)s.parseApiKey='';if(input.clearFallbackApiKey)s.fallbackApiKey='';if(input.clearMineruKey)s.mineruKey='';if(input.clearMineruToken)s.mineruToken='';return s;}
 async function classes(){const results=[];for(const d of await readdir(path.join(DATA,'classes'),{withFileTypes:true})){if(d.isDirectory()){const p=await json(path.join(DATA,'classes',d.name,'project.json'),null);if(p)results.push(migrateWeek(p));}}for(const pending of await pendingWeeks(DATA)){const index=results.findIndex(p=>p.id===pending.id),value=pendingProject(pending);if(index<0)results.push(value);else results[index]=value;}return results.sort((a,b)=>b.created.localeCompare(a.created));}
 for(const p of await classes()){await recoverMaterialCommits(classDir(p.id),async change=>{const current=await getClass(p.id);change(current);await putClass(current);Object.assign(p,current);});if(p.weekDeletionPending||await materialDeleteJournal(classDir(p.id)))continue;for(const f of p.files)if(f.aiParse?.status==='running'){f.aiParse.status='interrupted';f.aiParse.stage='上次解析被中断，可继续';f.aiParse.tasks={};f.progress='解析中断，可继续';}await migrateSourceNames(p,classDir(p.id),putClass);await migrateOutputs(p,classDir(p.id),putClass);const pending=await json(path.join(classDir(p.id),'.session-delete.json'),null);if(pending){p.deletionPending={sessionId:pending.sessionId,summary:pending.summary};p.status='error';p.stage='课堂删除未完成';}if(p.status==='running'){for(const f of p.files)if(f.parseStatus==='running'&&p.tasks?.[taskKey('reading',f.id)]?.status==='running'){f.parseStatus=f.parsed?'ready':'pending';delete f.progress;}for(const task of Object.values(p.tasks||{}))if(task.status==='running'){task.status='interrupted';task.error='Previous task was interrupted; saved results are available.';}p.status='interrupted';p.stage='上次处理被中断；原始材料和已有输出已保留，可重新处理。';}await recoverMineruArchives(p,classDir(p.id),putClass);await migrateDoubtCounts(p,classDir(p.id));for(const [key,task] of Object.entries(p.tasks||{}))if(task.status==='queued'&&task.request?.sourceId){const list=translationQueue.get(p.id)||[];list.push({key,options:task.request});translationQueue.set(p.id,list);}await putClass(p);await migrateReadingCitations(p,classDir(p.id));}
-// Whether a deck's saved analysis was made from older slide images, remembered per report version:
-// every slide image request needs it, and the report can be large.
-const staleMemo=new Map();
-async function learningStaleFor(dir,f,renderKey){
- if(!f.externalAnalysis)return false;
- const file=path.join(dir,'Parsed',f.externalAnalysis),info=await stat(file).catch(()=>null);if(!info)return false;
- const known=staleMemo.get(file);if(known&&known.mtime===info.mtimeMs&&known.size===info.size&&known.renderKey===renderKey)return known.stale;
- const report=await json(file,null),stale=report?learningFreshness(report,renderKey).stale:false;
- staleMemo.set(file,{mtime:info.mtimeMs,size:info.size,renderKey,stale});if(staleMemo.size>64)staleMemo.delete(staleMemo.keys().next().value);
- return stale;
-}
 async function updateStage(p,text){p.stage=text;p.updated=new Date().toISOString();await putClass(p);}
 async function run(p,settings,{origin,fresh=false,mode='preparation',sessionId,sessionIds,sourceId,referenceProvider,signal,onProgress}={}){
  const dir=classDir(p.id);let model;const warnings=[],usedModels={};
@@ -531,12 +532,12 @@ const server=http.createServer(async(req,res)=>{
       const interaction={...job,...modelJobInteraction(job,selected.model)};
       try{
        interaction.status('preparing','准备当前页原图和原生文本');
-       const {seed,bytes,sourceHash:hash,renderKey}=await pageCache.page(dir,file,s,{origin:url.origin,index:b.pageIndex,signal:job.signal});
+       const {seed,bytes,sourceHash:hash,renderKey,imageKey}=await pageCache.page(dir,file,s,{origin:url.origin,index:b.pageIndex,signal:job.signal});
        const input={page:b.pageIndex+1,source:file.name,nativeText:seed.nativeText||'',speakerNotes:seed.speakerNotes||'',hidden:!!seed.hidden,renderWarnings:seed.warnings||[],responseContract:PPT_CONTENT_SCHEMA};
        const raw=await complete(selected,(await doubtRules(ROOT))(await skill('ppt_learning')),JSON.stringify(input),{...interaction,json:true,images:['data:image/png;base64,'+bytes.toString('base64')]});
        job.signal.throwIfAborted();
        const page=draftToPage(normalizePptDraft(parseJson(raw)),{fileName:file.name,format:path.extname(file.name).slice(1).toLowerCase(),sha256:hash},input);
-       inspectRecognition(page,seed,renderKey);
+       inspectRecognition(page,seed,renderKey,imageKey);
        return {message:'单页校验通过 · 试解析',page:readerPage(page,file,hash),warnings:page.uncertainties};
       }finally{active.delete(id);}
      };
@@ -599,7 +600,7 @@ const server=http.createServer(async(req,res)=>{
    if(action==='ai-partial-import'&&method==='POST'){editable(id);const b=await payload(req);if(b.confirm!==true)throw Error('请明确确认使用部分结果。');await materialParser.acceptPartial(id,b.sourceId);return respond(res,200,await getClass(id));}
    if(action==='page-image'&&method==='GET'){
     const f=p.files.find(f=>f.id===url.searchParams.get('source')&&f.role==='ppt');if(!f)throw Error('请选择本周 PPT。');const value=url.searchParams.get('page');if(!/^\d+$/.test(value||''))throw Error('无效页码。');const index=Number(value)-1;
-    const image=await pageCache.page(dir,f,await config(),{origin:url.origin,index});if(url.searchParams.has('hash')&&url.searchParams.get('hash')!==image.sourceHash)throw Error('原件已变化，请刷新后重新核对页面。');const outdated=await learningStaleFor(dir,f,image.renderKey),etag='"'+image.renderKey+'-'+index+'"';const headers={'X-Render-Key':image.renderKey,'X-Learning-Stale':outdated?'1':'0','Cache-Control':'no-cache','ETag':etag,'X-Content-Type-Options':'nosniff','X-Preview-Warnings':encodeURIComponent((image.seed.warnings||[]).join('；'))};
+    const image=await pageCache.page(dir,f,await config(),{origin:url.origin,index});if(url.searchParams.has('hash')&&url.searchParams.get('hash')!==image.sourceHash)throw Error('原件已变化，请刷新后重新核对页面。');const outdated=await learningStaleFor(dir,f,image),etag='"'+image.renderKey+'-'+index+'"';const headers={'X-Render-Key':image.renderKey,'X-Learning-Stale':outdated?'1':'0','Cache-Control':'no-cache','ETag':etag,'X-Content-Type-Options':'nosniff','X-Preview-Warnings':encodeURIComponent((image.seed.warnings||[]).join('；'))};
     // The browser asks again each time a slide is shown; an unchanged slide is answered without the image.
     if(req.headers['if-none-match']===etag){res.writeHead(304,headers);return res.end();}
     res.writeHead(200,{...headers,'Content-Type':'image/png'});return res.end(image.bytes);
@@ -675,8 +676,15 @@ const server=http.createServer(async(req,res)=>{
      // the older whole-week guide would call them outdated again forever. Only the original counts.
      if(!pages?.length)pages=f.parsed?(await pptPages(dir,f)).map(page=>({sourceId:f.id,source:f.name,pageIndex:page.pageIndex,paragraphs:bodyParagraphs(page).map(english=>({english,chinese:''})),closeReading:'',inspection:page.externalInspection})):[];
      startSlides(dir,f,await config());const slideState=await previews.status(dir,f),drawnBy=slideEngine(slideState,f),exact=exactPages(slideState);
-     let renderKey=null,previewIssue='';try{renderKey=(await pageCache.describe(dir,f,await config())).renderKey;}catch(e){previewIssue=e.message;}
-     pages=pages.map(page=>({...page,closeReading:compactCoursewareCitations(page.closeReading||'',p.files),learningStale:!!(page.closeReading||page.paragraphs?.some(p=>p.chinese))&&(!page.renderKey||page.renderKey!==renderKey)}));
+     let renderKey=null,images=null,previewIssue='';try{images=await pageCache.describe(dir,f,await config());renderKey=images.renderKey;}catch(e){previewIssue=e.message;}
+     // A page's guide is outdated only when the picture it was made from changed (lib/ppt-quality.mjs sameImages):
+     // not when Edge updates or the drawing code changes while the pages are drawn by PowerPoint or from a PDF.
+     // Pages saved before imageKey existed are judged by the drawing basis their guide recorded.
+     let savedBasis;const basisOf=async()=>savedBasis??=(f.externalAnalysis?(await json(path.join(dir,'Parsed',f.externalAnalysis),null))?.parser?.renderBasis:null)||null;
+     const outdated=async page=>{if(!(page.closeReading||page.paragraphs?.some(p=>p.chinese)))return false;if(!page.renderKey&&!page.imageKey)return true;if(!images)return page.renderKey!==renderKey;
+      if(page.imageKey||page.renderKey===renderKey||!images.exact)return !sameImages({imageKey:page.imageKey,renderKey:page.renderKey},images);
+      return !sameImages({renderKey:page.renderKey,renderBasis:await basisOf(),sourceHash:page.sourceHash},images);};
+     pages=await Promise.all(pages.map(async page=>({...page,closeReading:compactCoursewareCitations(page.closeReading||'',p.files),learningStale:await outdated(page)})));
      // Each page's hints (doubts from parsing) and whether the reader has checked them; file-wide notes once.
      const checkpoint=f.aiParse?await json(checkpointFile(dir,f),null):null,checks=checkpoint?await readHintChecks(dir,f.id):{};
      if(checkpoint)pages=pages.map(page=>{const own=checkpoint.pages?.find(x=>x?.page===page.pageIndex+1),done=checks[String(page.pageIndex+1)]||[];return own?{...page,hints:pageHints(own,{exact}).map(text=>({text,checked:done.includes(text)}))}:page;});
