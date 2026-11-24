@@ -24,8 +24,9 @@ export class CoursePreview{
  constructor(readonly projectId:string,readonly sourceId:string,readonly fileName:string){
   const m=saved()[sourceId];
   // The live view drew with the same built-in approximation as the page images, so it is gone;
-  // a saved choice of it shows the page images.
-  this.mode=m==='browser'?'cached':m||'cached';
+  // A PPT/PPTX deck always shows the page images (PowerPoint's own, or drawn from a linked PDF):
+  // showing the PDF itself would only redraw the same pages less faithfully.
+  this.mode=m==='pdf'&&/\.pdf$/i.test(fileName)?'pdf':'cached';
   this.refresh().then(()=>this.apply());
  }
  /** The live view draws PPTX only. */
@@ -71,7 +72,7 @@ export class CoursePreview{
  }
  /** Converts the courseware to PDF in the background (engine chosen in settings). */
  convert(force=false){return this.act(()=>api.previewEnsure(this.projectId,this.sourceId,force));}
- associate(file:File){return this.act(async()=>{await api.previewAssociate(this.projectId,this.sourceId,file);this.mode='pdf';this.setMode('pdf');});}
+ associate(file:File){return this.act(async()=>{await api.previewAssociate(this.projectId,this.sourceId,file);});}
  clear(){return this.act(async()=>{await api.previewClear(this.projectId,this.sourceId);if(this.mode==='pdf')this.setMode('cached');});}
  redraw(){this.resetPdf();this.apply();this.reload++;}
 

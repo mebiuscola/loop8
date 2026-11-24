@@ -162,3 +162,5 @@
 4. 转换脚本只对本次运行放行（`-ExecutionPolicy Bypass`），错误信息改为可读的中文。
 
 测试：`test/powerpoint-slides.test.mjs`（设 `CLASSROOM_POWERPOINT=1` 时用真实 PowerPoint 核对：阅读页的原页图片与 PowerPoint 导出的图片逐字节相同）。
+
+**后续（用户：看不懂原页预览对话框，为什么要导出 PDF）：** PowerPoint 同时导出的 PDF 只用来核对页数（含隐藏页）和读取每页文字，不用于显示。对话框简化为：PPT/PPTX 只显示"由 PowerPoint 绘制 · 页数 · 时间"和重新生成按钮；"关联导出的 PDF"只在不能用 PowerPoint 时出现；"PDF 预览"显示方式只对 PDF 课件保留。有 PowerPoint 图片时不再用 PDF 再画一遍每页（之前画完就丢弃），首次打开更快。

@@ -57,6 +57,8 @@ window.materialRenderer={
    if(integrity.failedImages.length)warnings.push(integrity.failedImages.length+' 张图片未加载完成，不能视为完整页面');
    return {width,height,pixelRatio:Math.min(2,3200/Math.max(width,height)),warnings,integrity,...inventory[index]};
   }
+  // PowerPoint's own slide images replace the page image, so only the text is read from the PDF.
+  if(config.externalImages){const page=await pdf.getPage(index+1);return {integrity:{schema:'classroom.render-audit.v1',geometry:{complete:true},textIssues:[],failedImages:[]},image:'',external:true,width:0,height:0,warnings:[],...(inventory[index]||{nativeText:await pdfText(page),speakerNotes:'',hidden:false})};}
   const page=await pdf.getPage(index+1),base=page.getViewport({scale:1}),scale=Math.min((config.detail?3200:2400)/Math.max(base.width,base.height),config.detail?3.5:2.5),viewport=page.getViewport({scale});
   let canvas=document.querySelector('canvas');if(!canvas){canvas=document.createElement('canvas');document.body.append(canvas);}canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
   const native=inventory[index]||{nativeText:await pdfText(page),speakerNotes:'',hidden:false};

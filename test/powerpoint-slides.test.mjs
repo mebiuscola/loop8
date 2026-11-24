@@ -6,6 +6,8 @@ import path from 'node:path';
 import os from 'node:os';
 import {createRequire} from 'node:module';
 import {previewService} from '../lib/preview.mjs';
+import {pageCacheService} from '../lib/page-cache.mjs';
+import {fileURLToPath} from 'node:url';
 import {sourcePath} from '../lib/storage.mjs';
 import {zipFixture} from './helpers/zip-fixture.mjs';
 
@@ -60,6 +62,28 @@ test('waiting for a failed PowerPoint drawing returns the error instead of throw
   const state=await service.settle(dir,f,{});assert.equal(state.status,'error');assert.match(state.error,/无法打开/);
   await service.settle(dir,f,{});assert.equal(calls,1,'a failure is retried only on request');
   await service.ensure(dir,f,{},{force:true});await pause(20);assert.equal(calls,2);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('with PowerPoint slide images, page images come from PowerPoint and the PDF pages are only read for text',async()=>{
+ const {dir,f}=await deck();
+ f.role='ppt';
+ // A PNG header is enough: the page cache reads the size from it.
+ const png=i=>{const b=Buffer.alloc(33+i);Buffer.from([137,80,78,71,13,10,26,10]).copy(b);b.writeUInt32BE(13,8);b.write('IHDR',12);b.writeUInt32BE(1920,16);b.writeUInt32BE(1080,20);return b;};
+ try{
+  const previews=previewService(dir,{convert:async({dest,slidesDir})=>{await writeFile(dest,await pdf(2));await mkdir(slidesDir,{recursive:true});for(let i=1;i<=2;i++)await writeFile(path.join(slidesDir,'slide-'+i+'.png'),png(i));await writeFile(path.join(slidesDir,'slides.json'),JSON.stringify({count:2,width:1920,height:1080}));return 'PowerPoint';}});
+  assert.equal((await previews.settle(dir,f,{})).slides,true);
+  const opened=[];
+  const cache=pageCacheService({root:fileURLToPath(new URL('..',import.meta.url)),previews,render:async()=>({
+   open:async config=>{opened.push(config);return {pages:2};},
+   page:async i=>({image:'',external:true,width:0,height:0,nativeText:'Slide '+(i+1),warnings:[]}),close:async()=>{}})});
+  const ready=await cache.ensure(dir,f,{},{origin:'http://local'});
+  assert.equal(opened[0].kind,'pdf');assert.equal(opened[0].externalImages,true,'the PDF pages are not drawn');
+  for(const i of [0,1]){
+   assert.deepEqual(await readFile(path.join(ready.cache,'page-'+(i+1)+'.png')),png(i+1),'the page image is PowerPoint\'s own');
+   const seed=JSON.parse(await readFile(path.join(ready.cache,'page-'+(i+1)+'.json'),'utf8'));
+   assert.equal(seed.drawnBy,'PowerPoint');assert.equal(seed.width,1920);assert.equal(seed.height,1080);assert.equal(seed.nativeText,'Slide '+(i+1));assert.equal(seed.external,undefined);
+  }
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 
