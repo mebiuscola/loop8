@@ -14,7 +14,9 @@
   const value=model.assign.modelThinking[task]||'';
   // A level saved for another model stays visible, marked, until it is changed.
   const items=value&&!choices.some(([v])=>v===value)?[...choices,[value,model.thinkingName(value,kind)+'（此模型不支持）'] as [string,string]]:choices;
-  return {kind,items,first,value,waiting:kind==='acp'&&!choices.length};
+  // Antigravity: before the model list is read the levels are unknown; some models offer none.
+  const unread=kind==='acp'&&model.acpLevels(model.parts(route).model)===null;
+  return {kind,items,first,value,waiting:kind==='acp'&&!items.length,unread};
  }
 </script>
 
@@ -24,7 +26,7 @@
   <ModelPicker {id} {label} value={model.pickerValue(value)} {groups} first={['',first]} onpick={v=>set(v)}/>
   {#if t.kind}
    <ModelPicker compact id={id+'-thinking'} label={label+'的思考强度'} value={t.value} groups={t.items.length?[{label:'思考强度',items:t.items}]:[]}
-    first={t.waiting?['','刷新模型后可选']:t.first} disabled={t.waiting} onpick={level=>model.setThinking(task,level)}/>
+    first={t.waiting?['',t.unread?'刷新模型后可选':'无可选强度']:t.first} disabled={t.waiting} onpick={level=>model.setThinking(task,level)}/>
   {/if}
  </div>
 {/snippet}

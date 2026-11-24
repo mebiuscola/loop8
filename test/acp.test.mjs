@@ -51,6 +51,9 @@ test('standalone accepts the real official filename, requires its sibling helper
 test('official SDK stdio handshake, personal auth, new sessions, model config, images, streaming and refusal',async()=>{
  const runtime=create();try{
   const meta=await runtime.run(settings,{action:'inspect'});assert.equal(meta.models[0].modelId,'mock-gemini');assert.equal(meta.imageInput,true);assert.equal(meta.credits,'unknown');
+  // Each model's own thinking levels are read with the list; a model without any says so.
+  assert.deepEqual(Object.fromEntries(meta.models.map(m=>[m.modelId,(m.thinkingLevels||[]).map(l=>l.value)])),{'mock-gemini':['low','high'],'mock-other':['low','high'],'mock-plain':[]});
+  assert.equal(meta.currentModel,'mock-gemini');assert.deepEqual(meta.thinking.options.map(l=>l.value),['low','high'],'the reported current model and levels are those of the first model');
   await runtime.run(settings,{action:'login'});let chunks=[];
   const first=JSON.parse(await runtime.run(settings,{system:'skill task',user:'question',onUpdate:(update,text)=>chunks.push(text)}));
   assert(first.text.includes('skill task'));assert(!first.text.includes('system_prompt'));assert.equal(chunks.at(-1).includes('private thought'),false);

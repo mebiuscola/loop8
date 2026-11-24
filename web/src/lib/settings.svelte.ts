@@ -5,7 +5,9 @@ import {api,ApiError,type Settings,type ModelProfile,type SettingsSave} from './
 
 export type AccountKind='acp'|'chatgpt';
 /** thinking: levels a ChatGPT model lists (when its model list gives them). */
-export interface AccountModel{modelId:string;name?:string;thinking?:string[];defaultThinking?:string;}
+export interface AccountModel{modelId:string;name?:string;thinking?:string[];defaultThinking?:string;
+ /** Antigravity: the levels this model offers, read with the model list ([] = none; absent = not read yet). */
+ thinkingLevels?:ThinkingLevel[];}
 export const NEW_PREFIX='new:';            // value of a model not yet saved as a profile: "new:acp:<modelId>[#<thinking>]"
 /** A thinking level Antigravity offers (read with the model list). */
 export interface ThinkingLevel{value:string;name:string;}
@@ -119,7 +121,14 @@ export class SettingsModel{
   return value;
  }
  // ---- thinking level per function (any kind of model) ----
- thinkingName(level:string,kind:string='acp'){return (kind==='acp'?this.thinkingLevels.find(l=>l.value===level)?.name:'')||LEVEL_NAMES[level]||level;}
+ thinkingName(level:string,kind:string='acp'){return (kind==='acp'?[...this.accountModels.acp.flatMap(m=>m.thinkingLevels||[]),...this.thinkingLevels].find(l=>l.value===level)?.name:'')||LEVEL_NAMES[level]||level;}
+ /** Antigravity: the levels a model offers, or null when the model list has not been read with levels yet. */
+ acpLevels(model:string):ThinkingLevel[]|null{
+  const own=this.accountModels.acp.find(m=>m.modelId===model)?.thinkingLevels;
+  if(Array.isArray(own))return own;
+  // Lists read by older versions kept one list for all models.
+  return this.thinkingLevels.length?this.thinkingLevels:null;
+ }
  /** The model a function (or THINKING_DEFAULT) actually uses, as an assignment value. */
  routeOf(task:string):string{
   if(task===THINKING_DEFAULT)return this.assign.defaultId;
@@ -137,7 +146,7 @@ export class SettingsModel{
  /** Levels the model behind a value offers: Antigravity's list, a ChatGPT model's list, or low/medium/high for API models. */
  thinkingChoices(value:string):[string,string][]{
   const {kind,model}=this.parts(value);
-  if(kind==='acp')return this.thinkingLevels.map(l=>[l.value,l.name]);
+  if(kind==='acp')return (this.acpLevels(model)||[]).map(l=>[l.value,l.name]);
   if(kind==='chatgpt'){const listed=this.accountModels.chatgpt.find(m=>m.modelId===model)?.thinking;return (listed?.length?listed:API_LEVELS).map(v=>[v,this.thinkingName(v,kind)]);}
   if(kind==='api')return API_LEVELS.map(v=>[v,this.thinkingName(v,kind)]);
   return [];
