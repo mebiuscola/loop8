@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {contentListDocument} from '../lib/materials.mjs';
 import {translateReference,referenceProgress} from '../lib/reference-study.mjs';
+import {acpInteraction,interactiveAcpCall} from '../lib/acp-interaction.mjs';
 import {buildReferenceTerms,termParts,checkPartTerms,mergeReferenceTerms,relevantReferenceTerms,readReferenceTerms} from '../lib/reference-terms.mjs';
 
 test('glossary parts keep paragraphs whole and group them by page',()=>{
@@ -48,11 +49,11 @@ async function setup(paragraphs){
 /** A model that answers glossary and translation requests and records what it was sent. */
 function fakeModel({delay=5}={}){
  const calls=[];let active=0,peak=0;
- const run=async(kind,user,answer)=>{active++;peak=Math.max(peak,active);calls.push({kind,input:JSON.parse(user)});await new Promise(r=>setTimeout(r,delay));active--;return answer(JSON.parse(user));};
+ const run=async(kind,user,answer,options={})=>{active++;peak=Math.max(peak,active);calls.push({kind,input:JSON.parse(user),options});await new Promise(r=>setTimeout(r,delay));active--;return answer(JSON.parse(user));};
  return {calls,get peak(){return peak;},
   object:(name,system,user,validate,options)=>run(name.startsWith('参考文献术语')?'terms':'single',user,input=>{
-   const value=name.startsWith('参考文献术语')?{terms:[{english:'Weltliteratur',chinese:'世界文学',scope:'Goethe'},{english:'invented term',chinese:'编造',scope:'absent'}]}:{chinese:'译文 '+input.english};validate(value);return value;}),
-  text:(name,system,user)=>run('batch',user,input=>JSON.stringify({translations:input.items.map(i=>({id:i.id,chinese:'译文 '+i.english}))})),
+   const value=name.startsWith('参考文献术语')?{terms:[{english:'Weltliteratur',chinese:'世界文学',scope:'Goethe'},{english:'invented term',chinese:'编造',scope:'absent'}]}:{chinese:'译文 '+input.english};validate(value);return value;},options),
+  text:(name,system,user,options)=>run('batch',user,input=>JSON.stringify({translations:input.items.map(i=>({id:i.id,chinese:'译文 '+i.english}))}),options),
  };
 }
 
@@ -65,6 +66,8 @@ test('a reference is translated with its own glossary, in large batches, several
   const summary=await translateReference(p,file,settings,{dir,model,prompts:{reference_translation:'translate',reference_terminology:'glossary'},stage:async(_,text)=>stages.push(text),putClass:async()=>{},signal:new AbortController().signal});
   assert.equal(summary.completed,40);assert.deepEqual(summary.glossary,{status:'complete',count:1,error:''});
   assert.equal(model.calls.filter(c=>c.kind==='terms').length,1,'one glossary request for a short reading');
+  assert.equal(model.calls.find(c=>c.kind==='terms').options.sessionGroup,null,'the glossary asks for a fresh Antigravity session');
+  assert(model.calls.filter(c=>c.kind==='batch').every(c=>!('sessionGroup' in c.options)),'translation batches keep the shared session of the job');
   const batches=model.calls.filter(c=>c.kind==='batch');
   assert(batches.length<=Math.ceil(40/12)+1,'large batches: '+batches.length);
   assert(new Set(batches[0].input.items.map(i=>i.page)).size>1,'a batch runs across pages');
@@ -99,4 +102,13 @@ test('stopping keeps every finished paragraph; a failed glossary does not block 
   const glossary=await readReferenceTerms(dir,'ref',progress.source);
   assert.equal(glossary.status,'partial');assert.match(glossary.error,/glossary service down/);
  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('a request can opt out of the shared Antigravity session of its job',async()=>{
+ const signal=new AbortController().signal,context={signal,sessionGroup:'job',acquire:work=>work(null)};
+ const seen=await acpInteraction.run(context,()=>Promise.all([
+  interactiveAcpCall(o=>o.sessionGroup,{},'','{}',{}),
+  interactiveAcpCall(o=>o.sessionGroup,{},'','{}',{sessionGroup:null}),
+ ]));
+ assert.deepEqual(seen,['job',null]);
 });
