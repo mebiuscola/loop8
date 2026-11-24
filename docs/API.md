@@ -92,7 +92,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 | mode | 内容 | 用到的模型任务 |
 |---|---|---|
-| `preparation` | 课件识别、翻译、导读 | context, pptRecognition, pptTranslation, pptExplanation, deckReview（整课检查；未单独指定时跟随 pptRecognition。Antigravity 的思考强度随所选连接 `acpThinking`，可为整课检查单设较低强度） |
+| `preparation` | 课件识别、翻译、导读 | context, pptRecognition, pptTranslation, pptExplanation, deckReview（整课检查；未单独指定时跟随 pptRecognition。思考强度见 `modelThinking`（第 8 节），可为整课检查单设较低强度） |
 | `session` | 本节课讲稿 | context, classroom, transcriptTranslation |
 | `analysis` | 本节课 Deep Dive | context, deepDive |
 | `week` | 整周 Deep Dive | context, weeklyDeepDive |
@@ -166,7 +166,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | GET | `/api/acp/traces/:name` | 下载一个日志文件（JSON Lines：request、每条消息、permission、result 或 error） |
 | POST | `/api/acp/traces-clear` | 体：`{confirm:true}`，删除全部日志文件 |
 | GET | `/api/acp/timings` | 最近 50 次 Antigravity 请求各阶段耗时（秒）：`{timings:[{at,total,phases:{starting,initialize,authenticate,session,config,prompt,responding,thinking,tools,generating},reusedProcess,reusedSession,images,model,thoughtUpdates,toolCalls,toolKinds,toolTimeout?,noTools,promptChars,imageKB}]}`（promptChars：本次发送的文字字符数；imageKB：图片大小）（prompt：请求发出到 Antigravity 有任何动静；responding：有动静但还没开始思考；thinking：从第一段思考起；tools：智能体自己的工具调用；generating：从回答的第一个字起；思考内容只计数、不保存；toolKinds 只记工具类别的次数，例如 {search:2}，不记查询内容。工具调用累计超过 120 秒的请求会停止（toolTimeout），并以不使用工具的方式重新请求一次。Antigravity 可用的工具由 `skills/agent_tools.md` 规定（只用网页搜索辨认图片，外部信息标明来源）。课件每页各用一个新会话（2026-11-23 起不再共用：共用后上下文变长，并没有更快））；不含请求或回复内容。Antigravity 的"测试"结果也附上这次的耗时 |
-| POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`，删除一个模型）、`delete-connection`（`connectionId`，删除一个 API 连接下的全部模型）、`models`、`routes`、`mineru`、`preview`、`advanced`（advanced 含 `acpTrace`：保存 Antigravity 完整过程，默认关闭）。一个 API 连接可有多个模型：每个模型仍是一个 `profile`，同一连接的模型带相同的 `connectionId`（没有时等于自身 `id`，即单模型连接）；`baseUrl`、`outputTokenField`、`name`（连接名称）属于连接，保存其中一个模型时同步到同连接的其他模型，带新密钥或清除密钥时密钥也同步；新加的模型不带密钥时使用该连接已保存的密钥 |
+| POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`，删除一个模型）、`delete-connection`（`connectionId`，删除一个 API 连接下的全部模型）、`models`、`routes`（`modelRoutes`、`modelThinking`、`fallbackProfileId`、`fallbackEnabled`）、`mineru`、`preview`、`advanced`（advanced 含 `acpTrace`：保存 Antigravity 完整过程，默认关闭）。一个 API 连接可有多个模型：每个模型仍是一个 `profile`，同一连接的模型带相同的 `connectionId`（没有时等于自身 `id`，即单模型连接）；`baseUrl`、`outputTokenField`、`name`（连接名称）属于连接，保存其中一个模型时同步到同连接的其他模型，带新密钥或清除密钥时密钥也同步；新加的模型不带密钥时使用该连接已保存的密钥。**思考强度（2026-11-24）：** `modelThinking` 为每项功能单独设置思考强度 `{<功能>:<级别>, _default:<默认模型的级别>}`，与所选模型分开保存；没有设置的功能跟随所跟随的功能（单页试解析、整课检查跟随课件识别，参考文献术语整理跟随参考文献翻译）或默认模型，都没有时用模型自身的设置（Antigravity 连接的 `acpThinking`）。发送方式：Antigravity 切换会话的思考选项（级别来自读取模型列表）；API 连接加 OpenAI 兼容参数 `reasoning_effort`（low/medium/high）；ChatGPT 订阅加 `reasoning:{effort}`（级别来自该模型列出的级别，没有时为 low/medium/high）。API 与 ChatGPT 设置了思考强度时计入模型标识（`routeHash`），未设置时与以前相同 |
 | POST | `/api/settings/model-test` | 测试某个模型连接。体：`{kind, profile}`，kind ∈ `ai/text/json/vision/inspect/login`。返回 `202` 任务 |
 | POST | `/api/settings/test` | 测试 MinerU、视觉模型等。体：`{kind, settings?, task?}` |
 | GET | `/api/settings/test/:jobId` | 测试结果 |
@@ -176,7 +176,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | GET | `/api/chatgpt/status` | ChatGPT 订阅登录状态与用量 |
 | POST | `/api/chatgpt/login` | 体：`{reconsent?}` |
 | POST | `/api/chatgpt/disconnect` | 断开 |
-| GET | `/api/chatgpt/models` | 可用模型列表 |
+| GET | `/api/chatgpt/models` | 可用模型列表 `{models:[{modelId,name,thinking?,defaultThinking?}]}`（thinking：模型列出的思考强度级别） |
 
 ---
 

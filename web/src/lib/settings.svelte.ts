@@ -4,10 +4,17 @@
 import {api,ApiError,type Settings,type ModelProfile,type SettingsSave} from './api';
 
 export type AccountKind='acp'|'chatgpt';
-export interface AccountModel{modelId:string;name?:string;}
+/** thinking: levels a ChatGPT model lists (when its model list gives them). */
+export interface AccountModel{modelId:string;name?:string;thinking?:string[];defaultThinking?:string;}
 export const NEW_PREFIX='new:';            // value of a model not yet saved as a profile: "new:acp:<modelId>[#<thinking>]"
 /** A thinking level Antigravity offers (read with the model list). */
 export interface ThinkingLevel{value:string;name:string;}
+/** Functions that use another function's model, and its thinking level, until they have their own (lib/model-routing.mjs FOLLOWS). */
+export const FOLLOWS:Record<string,string>={pptPreview:'pptRecognition',deckReview:'pptRecognition',referenceTerms:'referenceTranslation'};
+export const THINKING_DEFAULT='_default';
+/** Thinking levels sent to API models (OpenAI-compatible reasoning_effort) and ChatGPT models that list none. */
+const API_LEVELS=['low','medium','high'];
+const LEVEL_NAMES:Record<string,string>={none:'关闭',minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'极高'};
 export const TASKS:[string,[string,string][]][]=[
  ['课件',[['pptRecognition','课件识别'],['pptTranslation','课件翻译'],['pptExplanation','课件解读'],['deckReview','整课检查'],['pptPreview','单页 PPT 试解析']]],
  ['参考文献',[['referenceTranslation','参考文献翻译'],['referenceTerms','参考文献术语整理'],['pdfRecognition','文献 AI 补救']]],
@@ -36,7 +43,7 @@ export class SettingsModel{
  /** Thinking levels Antigravity offers, from the last model list it returned. */
  thinkingLevels=$state<ThinkingLevel[]>(readLevels());
  acpPath=$state('');                       // draft of the ACP program path ('' = use the detected one)
- assign=$state({defaultId:'',modelRoutes:{} as Record<string,string>,fallbackProfileId:'',fallbackEnabled:false});
+ assign=$state({defaultId:'',modelRoutes:{} as Record<string,string>,modelThinking:{} as Record<string,string>,fallbackProfileId:'',fallbackEnabled:false});
  mineru=$state<Record<string,any>>({});
  preview=$state<Record<string,any>>({});
  advanced=$state<Record<string,any>>({});
@@ -55,7 +62,7 @@ export class SettingsModel{
   this.saved=s;
   this.profiles=[...s.modelProfiles.map(p=>this.withDefaults(p)),...unsaved];
   this.acpPath='';
-  this.assign={defaultId:s.defaultProfileId,modelRoutes:{...s.modelRoutes},fallbackProfileId:s.fallbackProfileId,fallbackEnabled:s.fallbackEnabled};
+  this.assign={defaultId:s.defaultProfileId,modelRoutes:{...s.modelRoutes},modelThinking:{...(s.modelThinking||{})},fallbackProfileId:s.fallbackProfileId,fallbackEnabled:s.fallbackEnabled};
   this.mineru={mineruToken:'',clearMineruToken:false,mineruLanguage:s.mineruLanguage,uploadConcurrency:s.uploadConcurrency};
   this.preview={previewEngine:s.previewEngine,browserPath:s.browserPath,libreOfficePath:s.libreOfficePath};
   this.advanced={contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput,acpTrace:s.acpTrace===true};
@@ -111,13 +118,31 @@ export class SettingsModel{
   for(const g of this.options())for(const [v] of g.items)if(this.parts(v).kind==='acp'&&this.parts(v).model===model)return v;
   return value;
  }
- /** The same Antigravity model with another thinking level ('' = the model's default). */
- withThinking(value:string,thinking:string){
-  const {kind,model}=this.parts(value);if(kind!=='acp')return value;
-  const saved=this.saved?.modelProfiles.find(p=>providerOf(p)==='acp'&&p.model===model&&(p.acpThinking||'')===thinking);
-  return saved?saved.id:NEW_PREFIX+'acp:'+model+(thinking?'#'+thinking:'');
+ // ---- thinking level per function (any kind of model) ----
+ thinkingName(level:string,kind:string='acp'){return (kind==='acp'?this.thinkingLevels.find(l=>l.value===level)?.name:'')||LEVEL_NAMES[level]||level;}
+ /** The model a function (or THINKING_DEFAULT) actually uses, as an assignment value. */
+ routeOf(task:string):string{
+  if(task===THINKING_DEFAULT)return this.assign.defaultId;
+  return this.assign.modelRoutes[task]||(FOLLOWS[task]?this.routeOf(FOLLOWS[task]):this.assign.defaultId);
  }
- thinkingName(level:string){return this.thinkingLevels.find(l=>l.value===level)?.name||level;}
+ /** The thinking level a function gets when it has none of its own: its parent's, the default model's, or the model's own. */
+ inheritedThinking(task:string):string{
+  if(task===THINKING_DEFAULT)return '';
+  const routes=this.assign.modelRoutes;
+  if(FOLLOWS[task]&&!routes[task])return this.thinkingOf(FOLLOWS[task]);
+  return routes[task]?'':this.assign.modelThinking[THINKING_DEFAULT]||'';
+ }
+ /** The thinking level a function uses ('' = the model's own). Same rule as the server (thinkingFor). */
+ thinkingOf(task:string):string{return this.assign.modelThinking[task]||this.inheritedThinking(task);}
+ /** Levels the model behind a value offers: Antigravity's list, a ChatGPT model's list, or low/medium/high for API models. */
+ thinkingChoices(value:string):[string,string][]{
+  const {kind,model}=this.parts(value);
+  if(kind==='acp')return this.thinkingLevels.map(l=>[l.value,l.name]);
+  if(kind==='chatgpt'){const listed=this.accountModels.chatgpt.find(m=>m.modelId===model)?.thinking;return (listed?.length?listed:API_LEVELS).map(v=>[v,this.thinkingName(v,kind)]);}
+  if(kind==='api')return API_LEVELS.map(v=>[v,this.thinkingName(v,kind)]);
+  return [];
+ }
+ setThinking(task:string,level:string){const next={...this.assign.modelThinking};if(level)next[task]=level;else delete next[task];this.assign.modelThinking=next;}
  labelOf(value:string){
   if(!value)return '';
   const think=this.parts(value).thinking,suffix=think?' · 思考 '+this.thinkingName(think):'';
@@ -127,11 +152,9 @@ export class SettingsModel{
  }
  /** What a task actually uses after defaults. */
  actual(task:string):string{
-  const v=this.assign.modelRoutes[task];
-  if(v)return this.labelOf(v);
-  if(task==='pptPreview'||task==='deckReview')return this.actual('pptRecognition');
-  if(task==='referenceTerms')return this.actual('referenceTranslation');
-  return this.labelOf(this.assign.defaultId)||'未选择模型';
+  const route=this.routeOf(task),label=this.labelOf(route);if(!label)return '未选择模型';
+  const level=this.thinkingOf(task);if(!level)return label;
+  return label.replace(/ · 思考 .*$/,'')+' · 思考 '+this.thinkingName(level,this.parts(route).kind);
  }
 
  // ---- unsaved changes ----
@@ -144,7 +167,7 @@ export class SettingsModel{
   return this.profiles.some(p=>this.profileDirty(p))||!!this.acpPath||this.mineruDirty;
  }
  get mineruDirty(){const s=this.saved!,m=this.mineru;return !!m.mineruToken||!!m.clearMineruToken||m.mineruLanguage!==s.mineruLanguage||Number(m.uploadConcurrency)!==s.uploadConcurrency;}
- get assignDirty(){const s=this.saved;if(!s)return false;return !same(this.assign,{defaultId:s.defaultProfileId,modelRoutes:s.modelRoutes,fallbackProfileId:s.fallbackProfileId,fallbackEnabled:s.fallbackEnabled});}
+ get assignDirty(){const s=this.saved;if(!s)return false;return !same(this.assign,{defaultId:s.defaultProfileId,modelRoutes:s.modelRoutes,modelThinking:s.modelThinking||{},fallbackProfileId:s.fallbackProfileId,fallbackEnabled:s.fallbackEnabled});}
  get previewDirty(){const s=this.saved;return !!s&&!same(this.preview,{previewEngine:s.previewEngine,browserPath:s.browserPath,libreOfficePath:s.libreOfficePath});}
  get advancedDirty(){const s=this.saved;return !!s&&!same(this.advanced,{contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput,acpTrace:s.acpTrace===true});}
 
@@ -201,7 +224,8 @@ export class SettingsModel{
     const routes:Record<string,string>={};for(const [task,v] of Object.entries(a.modelRoutes))routes[task]=await this.materialize(v);
     const defaultId=await this.materialize(a.defaultId),fallback=await this.materialize(a.fallbackProfileId);
     if(defaultId!==this.saved.defaultProfileId)await this.send({section:'models',defaultProfileId:defaultId});
-    await this.send({section:'routes',modelRoutes:routes,fallbackProfileId:fallback,fallbackEnabled:a.fallbackEnabled});
+    const thinking=Object.fromEntries(Object.entries(a.modelThinking).filter(([,v])=>v));
+    await this.send({section:'routes',modelRoutes:routes,modelThinking:thinking,fallbackProfileId:fallback,fallbackEnabled:a.fallbackEnabled});
    }else if(section==='preview')await this.send({section:'preview',...$state.snapshot(this.preview)});
    else await this.send({section:'advanced',...Object.fromEntries(Object.entries($state.snapshot(this.advanced)).map(([k,v])=>[k,typeof v==='string'&&/^\d+$/.test(v)?Number(v):v]))});
    this.settle(section);this.message='已保存。';
