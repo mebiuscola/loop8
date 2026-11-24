@@ -1,0 +1,35 @@
+# Line endings (2026-11-24): every text file is stored and checked out with LF, so editing tools
+# can no longer leave a file with mixed CRLF and LF. Windows command scripts keep CRLF.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Third-party code and test fixtures are kept byte for byte.
+vendor/** -text
+public/vendor/** -text
+test/fixtures/*.pptx binary
+test/fixtures/*.pdf binary
+
+# Binary files.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.pptx binary
+*.ppt binary
+*.docx binary
+*.xlsx binary
+*.zip binary
+*.mp3 binary
+*.m4a binary
+*.wav binary
+*.mp4 binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.wasm binary

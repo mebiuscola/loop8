@@ -51,7 +51,7 @@ Windows 上运行的本地课程工作台：一个 Node.js 服务（`server.mjs`
 
 ## 工作方式
 
-- **分支：** 不直接在 `main` 上改。缺陷用 `fix/…`，功能用 `feature/…`，文档用 `docs/…`。
+- **分支：** 不直接在 `main` 上改。缺陷用 `fix/…`，功能用 `feature/…`，文档用 `docs/…`。例外：发版或推送之后，只改 `docs/STATUS.md` 的进度记录可以直接提交在 `main` 上。
 - **提交：** 一个提交只做一件事，提交信息用一句话说明"改了什么、为什么"。
 - **测试：** 修改后运行全部测试（见下方"命令"）。浏览器测试需要本机有 Edge 或 Chrome。
 - **版本号：** 以 `package.json` 的 `version` 为唯一来源。页面上的版本号和静态资源的 `?v=` 不要另外手写。
@@ -64,14 +64,15 @@ Windows 上运行的本地课程工作台：一个 Node.js 服务（`server.mjs`
 
 | 做什么 | 命令 | 在哪里运行 |
 |---|---|---|
-| 全部测试 | `runtime\node.exe --test test/*.test.mjs`（约 4 分钟，应全部通过） | 项目根目录 |
+| 全部测试 | `runtime\node.exe --test test/*.test.mjs`（约 1 分钟，应全部通过） | 项目根目录 |
 | 单个测试 | `runtime\node.exe --test test/<名称>.test.mjs` | 项目根目录 |
 | 用真实 PowerPoint 测原页绘制 | 先设环境变量 `CLASSROOM_POWERPOINT=1`，再跑 `test/powerpoint-slides.test.mjs`（会在后台打开 PowerPoint；平时的全部测试不会启动 PowerPoint） | 项目根目录 |
 | 前端类型检查 | `npm run check` | `web/` |
 | 构建前端 | `npm run build`（输出到 `public/next/`） | `web/` |
 | 前端开发服务器 | `npm run dev`（把 `/api` 转发到 `CLASSROOM_PORT`，默认 4317） | `web/` |
+| 启动测试副本（看界面、试接口） | `runtime\node.exe scripts/test-server.mjs`（默认端口 4318；数据放在系统临时文件夹的 `classroom-test-data`，`--fresh` 清空，`--data <文件夹>` 另选，不能放在项目文件夹里）。测试副本打开设置时不会自动连接 Antigravity，也不会自动启动 PowerPoint | 项目根目录 |
 
-用 `runtime\node.exe`（随包 Node）跑测试，与用户实际运行的版本一致。`web/` 的命令需要系统安装的 Node 与 npm。
+用 `runtime\node.exe`（随包 Node）跑测试，与用户实际运行的版本一致。`web/` 的命令需要系统安装的 Node 与 npm；Git Bash 里找不到 `npm` 时先加 `PATH="/c/Program Files/nodejs:$PATH"`。
 
 ## 协作约定（多个开发助手轮流工作）
 
@@ -82,9 +83,18 @@ Windows 上运行的本地课程工作台：一个 Node.js 服务（`server.mjs`
 - **不要同时运行两个助手改这个文件夹。** 需要同时进行时，给另一个助手单独的分支和单独的文件夹（`git worktree`），完成后再合并。
 - **先问用户，再做：** 调用任何模型或外部服务（包括用用户的账号测试）、推送（`git push`）、删除分支或数据、修改 `skills/`。用户的一次同意只对那一次操作有效。
 - **查看真实数据：** 只能通过正在运行的应用接口（默认 `http://127.0.0.1:4317`），或复制到临时目录（不复制 `settings.json`）用完删除；只输出数字和结构（页数、耗时、字段名），不输出课程正文、提示词、模型回复、密钥或令牌。
-- **换行符：** 很多文件用 Windows 换行（CRLF），`server.mjs`、`CHANGELOG.md` 混用。修改时保持文件原有换行；提交前对比 `git diff --stat` 和 `git diff --ignore-cr-at-eol --stat`，两者行数应相同。
-- **发版：** 每个功能分支用一个合并提交并入 `main`（`git merge --no-ff`）；然后一个"Release x.y.z"提交：改 `package.json` 版本、在 `CHANGELOG.md` 的"新版本记录"最上面加一条（中文，写用户能感到的变化）、重新构建前端，并跑全部测试。推送前先问用户。
+- **换行符：** 由 `.gitattributes` 统一（2026-11-24）：文本文件一律 LF，只有 `.cmd`、`.bat`、`.ps1` 用 CRLF；`vendor/`、`public/vendor/` 原样保存。不要手动改换行符；工具写出 CRLF 时 git 会在提交时改回 LF。
+- **发版：** 每个功能分支用一个合并提交并入 `main`（`git merge --no-ff`）；然后一个"Release x.y.z"提交：改 `package.json` 版本、在 `CHANGELOG.md` 的"新版本记录"最上面加一条（中文，写用户能感到的变化）、重新构建前端（用 `git add -A public/next` 提交，旧的构建文件才会一起删除），并跑全部测试。推送前先问用户。
 - **Antigravity 请求日志：** 设置 → 高级可打开"保存 Antigravity 完整请求日志"，文件在 `data/diagnostics/acp/`；分析时只统计时间、数量、结构，不输出内容。
+
+## 注意事项（之前踩过的坑）
+
+- **打开"设置"会连接 Antigravity。** 正式运行的应用打开"服务与账号"时会自动读取模型列表，这算调用外部服务；看设置界面请用测试副本（`scripts/test-server.mjs`），在用户的应用里操作前先问用户。
+- **跑全部测试时不要构建前端。** 测试使用 `public/next/` 里的文件，构建会删除旧文件，正在运行的浏览器测试会因此失败。先构建，再跑测试。
+- **用 PowerPoint 的测试默认不跑。** 只有设了 `CLASSROOM_POWERPOINT=1` 才会在后台打开 PowerPoint；测试副本同样不会自动启动 PowerPoint。
+- **Git Bash 里的转义。** 在 heredoc 或 `node -e` 里写含反斜杠、引号的代码很容易被改坏；需要用脚本改文件时，先把脚本写成临时文件再运行。
+- **读不到 `data/` 是正常的。** 开发助手的权限会拦截读取 `data/`（连列文件也不行）；要了解真实数据，用正在运行的应用接口（`http://127.0.0.1:4317`），只输出数字和结构。
+- **应用只接受本机地址。** `127.0.0.1` 和 `localhost` 都可以；其他名称和跨站请求会被拒绝（403）。
 
 ## 前端结构
 

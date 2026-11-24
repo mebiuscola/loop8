@@ -5,7 +5,7 @@
 
 ## 通用约定
 
-- 服务只接受同源请求：带 `Origin` 且与本机地址不符时返回 `403`。
+- 服务只接受本机地址：Host 须为 `127.0.0.1:<端口>` 或 `localhost:<端口>`（2026-11-24 起接受 localhost），否则返回 `403`；带 `Origin` 且与 Host 不符时也返回 `403`。
 - 请求体为 JSON（`Content-Type: application/json`），上传类接口例外（见下文）。
 - 错误统一返回 `{ "error": "中文说明" }`，HTTP 状态非 2xx。前端直接把 `error` 显示给用户。
 - `409`：材料或结果正在提交（存在 `.output-transaction.json` 或材料提交日志）。提示用户稍后重试或重启。
@@ -161,7 +161,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 |---|---|---|
 | GET | `/api/settings` | 旧版设置读取（脱敏）。当前前端未调用 |
 | POST | `/api/settings` | 旧版整体保存。当前前端未调用 |
-| GET | `/api/settings/editor` | 新设置编辑器数据（脱敏，含 `acpPaths`、`modelProfiles`）。`acpBundled`：随包分发的 `agy-acp-server\agy_acp_server.exe` 的绝对路径，文件不存在时为空字符串；只读，不写入设置 |
+| GET | `/api/settings/editor` | 新设置编辑器数据（脱敏，含 `acpPaths`、`modelProfiles`）。`testCopy`：是否为测试副本（`scripts/test-server.mjs` 启动，`CLASSROOM_TEST_COPY=1`）；为真时设置页不自动读取 Antigravity 模型列表。`acpBundled`：随包分发的 `agy-acp-server\agy_acp_server.exe` 的绝对路径，文件不存在时为空字符串；只读，不写入设置 |
 | GET | `/api/acp/traces` | Antigravity 完整日志列表（设置 `acpTrace` 为 true 时每次请求写一个文件到 `<data>/diagnostics/acp/`）：`{enabled, files:[{name,size,at}], totalBytes}`。日志含课程内容（发送的全文、思考、工具调用与结果、回复），只存在本机，从不打印 |
 | GET | `/api/acp/traces/:name` | 下载一个日志文件（JSON Lines：request、每条消息、permission、result 或 error） |
 | POST | `/api/acp/traces-clear` | 体：`{confirm:true}`，删除全部日志文件 |

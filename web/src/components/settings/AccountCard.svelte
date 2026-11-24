@@ -66,7 +66,7 @@
  async function readChatModels(){try{model.setAccountModels('chatgpt',(await api.chatgptModels()).models);chatError='';}catch(e){chatError=(e as Error).message;}}
  async function disconnect(){try{await api.chatgptDisconnect();model.setAccountModels('chatgpt',[]);await refresh();}catch(e){chatError=(e as Error).message;}}
  // Only check when Antigravity has been used before, so a fresh install starts nothing.
- onMount(()=>{if(!acp)refresh();else if(account.status==='unknown'&&!account.busy&&model.acpExecutable&&(inUse.length||available.length))silentCheck();});
+ onMount(()=>{if(!acp)refresh();else if(account.status==='unknown'&&!model.saved?.testCopy&&!account.busy&&model.acpExecutable&&(inUse.length||available.length))silentCheck();});
  const acpLabel=$derived(
   acpStatus==='checking'?'正在确认登录…':
   acpStatus==='ok'?'已登录 · 可用模型 '+available.length+' 个':

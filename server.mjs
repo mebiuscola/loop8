@@ -189,7 +189,10 @@ const outputNames=['Class_Script_Bilingual.md','Deep_Dive.md'];
 const diagnostics=new Map(),previews=previewService(ROOT),localFonts=localFontService();
 // Courseware slides are drawn by PowerPoint (lib/preview.mjs), started automatically for PPT/PPTX.
 // Test runs never start PowerPoint on the developer's computer unless CLASSROOM_POWERPOINT=1.
-const autoPowerPoint=s=>process.platform==='win32'&&['auto','powerpoint'].includes(s.previewEngine||'auto')&&(!process.env.NODE_TEST_CONTEXT||process.env.CLASSROOM_POWERPOINT==='1');
+// A test copy (CLASSROOM_TEST_COPY=1, started by scripts/test-server.mjs) does not start PowerPoint
+// or check the Antigravity account by itself either.
+const TEST_COPY=process.env.CLASSROOM_TEST_COPY==='1';
+const autoPowerPoint=s=>process.platform==='win32'&&['auto','powerpoint'].includes(s.previewEngine||'auto')&&(!(process.env.NODE_TEST_CONTEXT||TEST_COPY)||process.env.CLASSROOM_POWERPOINT==='1');
 const slideDeck=f=>f.role==='ppt'&&/\.pptx?$/i.test(f.name);
 /** Starts PowerPoint's slide images for a deck that has none yet (a failed one is retried only on request). */
 function startSlides(dir,f,s){if(slideDeck(f)&&autoPowerPoint(s))previews.ensure(dir,f,s).catch(()=>{});}
@@ -354,7 +357,7 @@ function validateSettings(s){validateModelRouting(s);
 const server=http.createServer(async(req,res)=>{
  let lockedId;
  try{
-  const host=req.headers.host;if(!/^127\.0\.0\.1:\d+$/.test(host||''))return respond(res,403,{error:'只允许本机访问。'});
+  const host=req.headers.host;if(!/^(?:127\.0\.0\.1|localhost):\d+$/i.test(host||''))return respond(res,403,{error:'只允许本机访问。'});
   if(req.headers.origin&&req.headers.origin!==`http://${host}`)return respond(res,403,{error:'拒绝跨站请求。'});
   const url=new URL(req.url,`http://${host}`),parts=url.pathname.split('/').filter(Boolean),method=req.method;
   if(url.pathname==='/api/events'&&method==='GET'){
@@ -394,7 +397,7 @@ const server=http.createServer(async(req,res)=>{
     validateSettings(s);await save(path.join(DATA,'settings.json'),s);
    }else if(method!=='GET')throw Error('无效设置操作。');
    const bundled=path.join(ROOT,'agy-acp-server','agy_acp_server.exe'),acpBundled=await access(bundled).then(()=>bundled,()=>'');
-   return respond(res,200,{...s,acpBundled,acpPaths:acpPathsForSettings(s),modelProfiles:publicProfiles(s),apiKey:undefined,parseApiKey:undefined,fallbackApiKey:undefined,mineruKey:undefined,mineruToken:undefined,hasMineruToken:!!s.mineruToken});
+   return respond(res,200,{...s,testCopy:TEST_COPY,acpBundled,acpPaths:acpPathsForSettings(s),modelProfiles:publicProfiles(s),apiKey:undefined,parseApiKey:undefined,fallbackApiKey:undefined,mineruKey:undefined,mineruToken:undefined,hasMineruToken:!!s.mineruToken});
   }
   if(url.pathname==='/api/settings/acp-logout'&&method==='POST'){
    const input=await payload(req);
