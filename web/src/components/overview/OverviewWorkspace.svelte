@@ -10,6 +10,7 @@
  import {api,ApiError,type CoursewareReader,type Project,type ReferenceReader,type Session} from '../../lib/api';
  import {router,courseHref} from '../../lib/router.svelte';
  import {store} from '../../lib/store.svelte';
+ import {readerCache,readerSignature} from '../../lib/reader-cache.svelte';
  import {scriptStatus} from '../../lib/classroom';
  import {sessionDiveStatus,weekDiveStatus,weeklyAnalysis} from '../../lib/deepdive';
 
@@ -22,21 +23,15 @@
  const materials=$derived(project.files.filter(f=>f.role in order).sort((a,b)=>order[a.role]-order[b.role]));
 
  // ---- reading status of each material (same data as the reading page) ----
- // Each entry remembers the role it was read for: after a role change the row must not be given
- // the other kind's data (a courseware row given reference data broke the whole page).
- let readers=$state<Record<string,{role:string;reader:CoursewareReader|ReferenceReader}>>({});
- const signature=$derived(JSON.stringify([project.tasks||{},project.materialRevision,materials.map(f=>[f.id,f.role,f.parsed,f.parseStatus,f.aiParse?.status,f.aiParse?.completed])]));
- let last='';
+ // Shared with the reading page (lib/reader-cache.svelte.ts): read once and again only when a
+ // material's saved result changes. The key includes the kind, so after a role change a row is never
+ // given the other kind's data (a courseware row given reference data broke the whole page).
+ const readable=$derived(materials.filter(f=>f.role==='ppt'||f.role==='reading'&&f.parsed).map(f=>[f.role==='ppt'?'ppt':'ref',f] as const));
  $effect(()=>{
-  const sig=signature;if(sig===last)return;last=sig;
-  untrack(()=>{
-   for(const f of materials){
-    const load=f.role==='ppt'?api.reader(project.id,f.id):f.role==='reading'&&f.parsed?api.referenceReader(project.id,f.id):null;
-    const role=f.role;
-    if(load)load.then(reader=>readers[f.id]={role,reader},()=>{/* the row shows "读取中" and the reading page shows the error */});
-   }
-  });
+  const signatures=readable.map(([k,f])=>readerSignature(project,k,f));
+  untrack(()=>{signatures;for(const [k,f] of readable)readerCache.load(project,k,f);});
  });
+ const readerOf=(f:{id:string;role:string})=>(readerCache.data[readerCache.key(project.id,f.role==='ppt'?'ppt':'ref',f.id)]??null) as CoursewareReader|ReferenceReader|null;
 
  // ---- adding files (button or drop anywhere on the page) ----
  let picker=$state<HTMLInputElement>();
@@ -150,7 +145,7 @@
     </div>
    {/if}
    {#each materials as f (f.id)}
-    <MaterialRow {project} file={f} reader={readers[f.id]?.role===f.role?readers[f.id].reader:null} {locked}/>
+    <MaterialRow {project} file={f} reader={f.role==='ppt'||f.role==='reading'?readerOf(f):null} {locked}/>
    {:else}
     <div class="empty">
      <p>还没有课件或参考文献。点"＋ 添加文件"，或把文件拖到这个页面。</p>

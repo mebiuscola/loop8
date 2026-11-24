@@ -1,11 +1,15 @@
 <script lang="ts">
  import {onMount} from 'svelte';
  import OriginalPage,{type PreviewMode} from './OriginalPage.svelte';
- import type {CoursewareReader,ReaderPage} from '../../lib/api';
+ import type {CoursewareReader,ReaderPage,RedoPart} from '../../lib/api';
  import type {PdfDoc} from '../../lib/pdf';
  import {boldParts} from '../../lib/reading';
 
- let {projectId,reader,columns,jump,onpage,mode='cached',pdf=null,pptx=null,reload=0,onenlarge,pageCount=0,oncheck}:{projectId:string;reader:CoursewareReader;columns:{original:boolean;translation:boolean;notes:boolean};jump:{page:number;seq:number};onpage:(n:number)=>void;
+ let {projectId,reader,columns,jump,onpage,mode='cached',pdf=null,pptx=null,reload=0,onenlarge,pageCount=0,oncheck,generating=null,onredo,ontrial}:{
+  /** Redoes one page (whole, translation or explanation); absent while redo is not possible. */
+  onredo?:(pageIndex:number,part:RedoPart)=>void;ontrial?:(pageIndex:number)=>void;
+  /** While this courseware is being generated: pages in progress (0-based index → current step). */
+  generating?:Record<string,{phase?:string}>|null;projectId:string;reader:CoursewareReader;columns:{original:boolean;translation:boolean;notes:boolean};jump:{page:number;seq:number};onpage:(n:number)=>void;
   /** Marks a parse hint of a page as checked against the original (or undoes it). */
   oncheck?:(page:number,hint:string,checked:boolean)=>Promise<void>;
   mode?:PreviewMode;pdf?:Promise<PdfDoc>|null;pptx?:Promise<ArrayBuffer>|null;reload?:number;onenlarge?:(pageIndex:number)=>void;
@@ -54,6 +58,10 @@
   if(!oncheck)return;busyHint=page+'|'+hint;
   try{await oncheck(page,hint,checked);}finally{busyHint='';}
  }
+ // The menu of one page: check the original, try it alone, or do it again.
+ let menuPage=$state(-1);
+ function outside(e:MouseEvent){if(menuPage>=0&&!(e.target as HTMLElement).closest?.('.pagemenu'))menuPage=-1;}
+ const redoItems:[RedoPart,string][]=[['all','重新生成本页'],['translation','只重新翻译本页'],['explanation','只重新解读本页']];
  const pageTypeLabel:Record<string,string>={cover:'封面',agenda:'目录',section:'章节页',content:'',quote:'引文',image:'图片',ending:'结尾'};
 </script>
 
@@ -74,6 +82,8 @@
  {/if}
 {/snippet}
 
+<svelte:window onclick={outside} onkeydown={e=>{if(e.key==='Escape')menuPage=-1;}}/>
+
 <div class="scroller" bind:this={scroller}>
  <div class="colhead" style:grid-template-columns={template}>
   {#if columns.original}<span class="kind original">原页</span>{/if}
@@ -91,12 +101,27 @@
   {@const n=p.pageIndex+1}
   <section data-page={n} aria-label={'第 '+n+' 页'}>
    <header class="pagehead">第 {n} 页{#if p.pageType&&pageTypeLabel[p.pageType]} · {pageTypeLabel[p.pageType]}{/if}
-    {#if columns.original&&onenlarge}<button class="enlarge" type="button" onclick={()=>onenlarge(p.pageIndex)} title="放大原页">放大</button>{/if}</header>
+    {#if generating}{@const t=generating[String(p.pageIndex)]}{#if t}<span class="gen">正在生成{t.phase?' · '+t.phase:''}</span>{:else if p.unparsed}<span class="gen wait">等待生成</span>{/if}{/if}
+    {#if columns.original&&onenlarge}<button class="enlarge" type="button" onclick={()=>onenlarge(p.pageIndex)} title="放大原页">放大</button>{/if}
+    <span class="pagemenu">
+     <button class="enlarge" type="button" aria-haspopup="menu" aria-expanded={menuPage===p.pageIndex} aria-label={'第 '+n+' 页操作'} onclick={()=>menuPage=menuPage===p.pageIndex?-1:p.pageIndex}>⋯</button>
+     {#if menuPage===p.pageIndex}
+      <span class="menu-list" role="menu">
+       {#if onenlarge}<button role="menuitem" onclick={()=>{menuPage=-1;onenlarge(p.pageIndex);}}>放大核对原页</button>{/if}
+       {#if ontrial}<button role="menuitem" onclick={()=>{menuPage=-1;ontrial(p.pageIndex);}}>试解析本页…</button>{/if}
+       <span class="menu-sep" role="separator"></span>
+       {#each redoItems as [part,label] (part)}
+        <button role="menuitem" disabled={!onredo||p.unparsed||!!generating} title={p.unparsed?'这一页还没有导读，请先生成导读。':generating?'这份课件正在生成，完成后再重做。':''} onclick={()=>{menuPage=-1;onredo?.(p.pageIndex,part);}}>{label}</button>
+       {/each}
+       <span class="menu-note">重做时原来的内容保留，新结果保存后替换；失败或停止时保留原结果。</span>
+      </span>
+     {/if}
+    </span></header>
    <div class="row" style:grid-template-columns={template}>
     {#if columns.original}
      <div class="col">
       <!-- The original page stays in view while its translation scrolls (UI issue 28); placeholder while loading (issue 27). -->
-      <div class="sticky"><OriginalPage {projectId} {reader} pageIndex={p.pageIndex} {mode} {pdf} {pptx} {reload}/></div>
+      <div class="sticky"><OriginalPage {projectId} {reader} pageIndex={p.pageIndex} mode={mode==='browser'?'cached':mode} {pdf} {pptx} {reload}/></div>
      </div>
     {/if}
     {#if columns.translation}
@@ -129,7 +154,7 @@
 </div>
 
 <style>
- .scroller{position:absolute;inset:0;overflow:auto;padding:0 var(--space-4) var(--space-6);}
+ .scroller{position:absolute;inset:0;overflow:auto;container-type:inline-size;padding:0 var(--space-4) var(--space-6);}
  .colhead{position:sticky;top:0;z-index:2;display:grid;gap:var(--space-4);padding:var(--space-2) 0;background:var(--bg-app);border-bottom:1px solid var(--line);}
  .kind{font-size:var(--text-xs);font-weight:var(--weight-medium);}
  .kind.original{color:var(--kind-original);}
@@ -140,7 +165,19 @@
  .row{display:grid;gap:var(--space-4);align-items:start;}
  .col{min-width:0;}
  .sticky{position:sticky;top:44px;}
- .enlarge{margin-left:auto;padding:0 var(--space-2);height:24px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-raised);font-size:var(--text-xs);color:var(--fg-muted);}
+ .gen{padding:0 var(--space-2);border-radius:var(--radius-sm);background:var(--status-running-bg);color:var(--status-running-fg);font-size:var(--text-xs);font-weight:normal;}
+ .gen.wait{background:var(--sand-100);color:var(--fg-muted);}
+ /* Page tools sit at the right end of the page header. */
+ .pagemenu{position:relative;margin-left:auto;}
+ .pagehead>.enlarge{margin-left:auto;}
+ .pagehead>.enlarge+.pagemenu{margin-left:0;}
+ .menu-list{position:absolute;right:0;top:calc(100% + var(--space-1));z-index:5;min-width:220px;padding:var(--space-1);display:flex;flex-direction:column;background:var(--bg-raised);border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-panel);font-weight:normal;}
+ .menu-list button{padding:var(--space-2) var(--space-3);border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-size:var(--text-sm);color:var(--fg);}
+ .menu-list button:hover:not(:disabled){background:var(--sand-100);}
+ .menu-list button:disabled{color:var(--fg-subtle);}
+ .menu-sep{height:1px;margin:var(--space-1) 0;background:var(--line);}
+ .menu-note{padding:var(--space-1) var(--space-3);font-size:var(--text-xs);color:var(--fg-muted);}
+ .enlarge{padding:0 var(--space-2);height:24px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-raised);font-size:var(--text-xs);color:var(--fg-muted);}
  .enlarge:hover{color:var(--fg);border-color:var(--line-strong);}
  .para{padding:0 0 var(--space-3) var(--space-3);border-left:2px solid var(--kind-translation);margin-bottom:var(--space-3);}
  .en{margin:0 0 var(--space-1);font-family:var(--font-reading);font-size:var(--text-md);color:var(--ink-700);}
@@ -157,4 +194,11 @@
  .hints li{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);background:var(--bg-raised);color:var(--fg-muted);}
  .hints li.checked span{text-decoration:line-through;color:var(--fg-subtle);}
  .hints li .btn{flex:none;height:24px;padding:0 var(--space-2);font-size:var(--text-xs);}
+ /* Last, so it wins over the rules above: a narrow reader stacks the columns (original, translation,
+    analysis) instead of squeezing them side by side. */
+ @container (max-width:760px){
+  .row{grid-template-columns:1fr !important;}
+  .colhead{display:none;}
+  .sticky{position:static;}
+ }
 </style>

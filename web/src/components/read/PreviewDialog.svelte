@@ -13,7 +13,7 @@
  const modes:[PreviewMode,string,string][]=[
   ['cached','原页图片（默认）','由本地服务生成并缓存，速度快。'],
   ['pdf','PDF 预览','按 PDF 绘制：课件本身是 PDF 时直接使用；PPTX 需先转换或关联你导出的 PDF。'],
-  ['browser','实时浏览器预览（核对）','在浏览器中直接绘制 PPTX，用来核对原页图片是否准确。较慢，仅限 PPTX。'],
+  ['browser','实时浏览器预览（核对）','点"放大"时在浏览器中直接绘制 PPTX，用来核对原页图片是否准确；阅读栏仍显示原页图片。较慢，仅限 PPTX。'],
  ];
  const statusText=$derived(!st?'正在读取…':st.status==='ready'?'已就绪'+(st.engine?' · '+st.engine:'')+(st.pages?' · '+st.pages+' 页':''):['queued','running'].includes(st.status)?'正在转换…'+(st.stage?' '+st.stage:''):st.status==='error'?'转换失败'+(st.error?'：'+st.error:''):'未生成');
 </script>

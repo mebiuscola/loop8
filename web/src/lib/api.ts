@@ -15,6 +15,8 @@ export interface SourceFile{id:string;name:string;sessionId?:string;role:'bb'|'p
  parseSource?:'text-layer'|'mineru';
  size?:number;parsed?:boolean;error?:string;aiParse?:AiParse|null;externalAnalysis?:string;importSummary?:unknown;}
 export type Role='bb'|'ppt'|'reading';
+/** What a page redo does again: the whole page, or only its translation or explanation. */
+export type RedoPart='all'|'translation'|'explanation';
 export interface MaterialDeletePlan{name:string;sharedOriginal?:boolean;}
 export interface SessionDeletePlan{title:string;subtitles:number;recordings:number;versions?:number;}
 export interface WeekDeletePlan{name:string;sessions:number;materials:number;subtitles:number;recordings:number;}
@@ -151,7 +153,8 @@ export const api={
  pptSkillUrl:()=>'/api/ppt-skill',
  /** Parses a Reading / BB PDF: its own text layer first, MinerU for scans; engine 'mineru' always uses MinerU. */
  parsePdf:(id:string,sourceId:string,engine?:'mineru')=>post<unknown>(project(id)+'/process',{mode:'reading',sourceId,...(engine?{engine}:{})}),
- aiParse:(id:string,sourceId:string,options:{fresh?:true;retryIssues?:true;retryFailed?:true;teachingPart?:'translation'|'explanation'}={})=>post<unknown>(project(id)+'/ai-parse',{sourceId,...options}),
+ /** pages + part: redo chosen courseware pages only; the previous result stays until the new one is saved. */
+ aiParse:(id:string,sourceId:string,options:{fresh?:true;retryIssues?:true;retryFailed?:true;teachingPart?:'translation'|'explanation';pages?:number[];part?:RedoPart}={})=>post<unknown>(project(id)+'/ai-parse',{sourceId,...options}),
  aiPartial:(id:string,sourceId:string)=>request<PartialResults>(project(id)+'/ai-partial?source='+encodeURIComponent(sourceId)),
  aiPartialImport:(id:string,sourceId:string)=>post<Project>(project(id)+'/ai-partial-import',{sourceId,confirm:true}),
  hintCheck:(id:string,sourceId:string,page:number,hint:string,checked:boolean)=>post<{page:number;checked:string[];hints:number}>(project(id)+'/hint-check',{sourceId,page,hint,checked}),
