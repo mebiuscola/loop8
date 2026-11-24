@@ -111,10 +111,10 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/projects/:id/reader?version=` | 课件阅读数据（逐页原文、译文、细读）。有 AI 解析时，每页带 `hints:[{text, checked}]`（解析疑点，不影响页面状态），并带整份课件的 `notes`（例如本机缺少课件字体） |
+| GET | `/api/projects/:id/reader?version=` | 课件阅读数据（逐页原文、译文、细读）。有 AI 解析时，每页带 `hints:[{text, checked}]`（解析疑点，不影响页面状态），并带整份课件的 `notes`（例如本机缺少课件字体）。`renderKey`：当前原页图片的版本；`drawnBy`：原页由谁绘制 `{kind:"powerpoint"|"pdf"|"converting"|"approximate", engine?, generated?, reason?}`（approximate 为内置近似绘制，reason 说明为什么没有用 PowerPoint）。打开 PPT/PPTX 时若还没有 PowerPoint 绘制的原页，会在后台开始绘制 |
 | GET | `/api/projects/:id/page-image?source=&page=` | 缓存的页面截图。带 `ETag`；请求带相同的 `If-None-Match` 时返回 304（不重新发送图片） |
-| POST | `/api/projects/:id/preview?source=` | 生成预览。体：`{force?}`，返回 `202` |
-| GET | `/api/projects/:id/preview-status?source=` | 预览状态 |
+| POST | `/api/projects/:id/preview?source=` | 生成预览。体：`{force?}`，返回 `202`。**PowerPoint 绘制原页（2026-11-24）：** 用本机 PowerPoint 时，打开课件副本（只读、无窗口、不运行宏），把每页（含隐藏页）导出为 1920 像素宽的 PNG，同时另存 PDF；这些 PNG 就是阅读页和发给模型的原页图片。PPT/PPTX 上传、打开阅读页、生成导读前会自动开始（导读会等它完成；失败时用内置近似绘制，只在用户点"用 PowerPoint 重新生成原页"时重试）。`force:true` 重新绘制。脚本以 `-ExecutionPolicy Bypass` 只对本次运行放行（Windows 默认禁止运行脚本）。测试中不自动启动 PowerPoint，除非设置 `CLASSROOM_POWERPOINT=1` |
+| GET | `/api/projects/:id/preview-status?source=` | 预览状态。`slides:true` 表示原页图片由 PowerPoint 导出；`generated` 为生成时间 |
 | GET | `/api/projects/:id/preview-file?source=` | 预览 PDF |
 | POST | `/api/projects/:id/preview-pdf?source=` | 关联用户导出的 PDF（原始字节，≤150MB） |
 | POST | `/api/projects/:id/preview-clear?source=` | 清理预览 |

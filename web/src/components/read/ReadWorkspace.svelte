@@ -134,8 +134,19 @@
   const id=kind==='ppt'?file?.id:undefined,name=file?.name||'';
   if(!id){untrack(()=>{preview?.destroy();preview=null;});return;}
   const next=new CoursePreview(project.id,id,name);
+  // When PowerPoint finishes drawing the slides, read the deck again: new render key, new images.
+  next.onsettled=()=>{const f=files.ppt.find(x=>x.id===id);if(f)readerCache.load(project,'ppt',f,true);};
   untrack(()=>{preview?.destroy();preview=next;});
   return ()=>next.destroy();
+ });
+ // A drawing started by opening the deck is followed until it is done.
+ $effect(()=>{if(kind==='ppt'&&(current as CR|null)?.drawnBy?.kind==='converting'&&preview&&!['queued','running'].includes(preview.status?.status||''))untrack(()=>preview?.refresh());});
+ const drawnNote=$derived.by(()=>{
+  const d=kind==='ppt'?(current as CR|null)?.drawnBy:null;if(!d)return '';
+  if(d.kind==='converting')return '正在用 PowerPoint 绘制原页…完成前显示近似图。';
+  if(d.kind==='approximate')return '原页为近似绘制（非 PowerPoint）'+(d.reason?'：'+d.reason:'。');
+  if(d.kind==='pdf')return d.engine==='原始 PDF'?'':'原页按 PDF 绘制'+(d.engine?'（'+d.engine+'）':'')+'。';
+  return '';
  });
  let dialog=$state<''|'preview'|'trial'|'enlarge'|'retry'>(''),dialogPage=$state(0);
  function openDialog(kind:'preview'|'trial'|'enlarge'|'retry',pageIndex=page-1){menuOpen=false;dialogPage=pageIndex;dialog=kind;}
@@ -198,9 +209,10 @@
    <StatusBadge kind={status.kind} text={status.text}/>
    {#if kind==='ppt'&&current&&(current as CR).learningStale&&status.kind==='done'}
     {@const n=(current as CR).pages.filter(p=>p.learningStale).length}
-    <span class="note">原页渲染方式更新过，{n} 页的导读是按旧版原页生成的，内容通常仍可用。</span>
+    <span class="note">{(current as CR).drawnBy?.kind==='powerpoint'?'原页已改用 PowerPoint 绘制，'+n+' 页的导读是按旧图生成的，可在该页 ⋯ 中重新生成。':'原页渲染方式更新过，'+n+' 页的导读是按旧版原页生成的，内容通常仍可用。'}</span>
    {/if}
    {#each kind==='ppt'&&current?(current as CR).notes||[]:[] as note (note)}<span class="note">{note}。安装这些字体后，原页显示会更准确。</span>{/each}
+   {#if drawnNote}<span class="note">{drawnNote} <button class="link" onclick={()=>openDialog('preview')}>原页预览…</button></span>{/if}
    {#if kind==='ppt'&&current&&(current as CR).previewIssue}<span class="note">原页预览：{(current as CR).previewIssue}</span>{/if}
    {#if kind==='ref'&&current&&(current as RR).sourceWarnings?.missingPages?.length}<span class="note">有 {(current as RR).sourceWarnings!.missingPages!.length} 页原文未能解析</span>{/if}
    {#if kind==='ppt'&&list.length>1&&action}<span class="note">课件导读按整周生成，会处理本周全部课件。</span>{/if}
@@ -266,6 +278,7 @@
  .menu-label{padding:var(--space-1) var(--space-3);font-size:var(--text-xs);color:var(--fg-muted);}
  .statusline{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--line);font-size:var(--text-sm);}
  .note{color:var(--fg-muted);}
+ .link{border:0;background:none;padding:0;color:var(--accent);font-size:inherit;cursor:pointer;}
  .body{flex:1;min-height:0;position:relative;}
  .empty{max-width:520px;margin:var(--space-6) auto;padding:0 var(--space-4);}
  .empty h2{font-size:var(--text-lg);margin-bottom:var(--space-2);}

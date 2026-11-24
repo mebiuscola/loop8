@@ -77,7 +77,8 @@
   return ()=>{stopped=true;clearTimeout(timer);removeEventListener('message',listen);target.removeEventListener('load',open);target.src='about:blank';};
  });
 
- let imageUrl=$derived(api.pageImageUrl(projectId,reader.sourceId,pageIndex,reader.sourceHash)+(reload?'&r='+reload:''));
+ // The render key is part of the address, so slides drawn again (e.g. by PowerPoint) are fetched anew.
+ let imageUrl=$derived(api.pageImageUrl(projectId,reader.sourceId,pageIndex,reader.sourceHash)+(reader.renderKey?'&rk='+encodeURIComponent(reader.renderKey):'')+(reload?'&r='+reload:''));
 </script>
 
 <div class="original" class:large bind:this={host} style:--aspect={aspect}>

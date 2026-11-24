@@ -18,10 +18,14 @@ export class CoursePreview{
  pptx=$state<Promise<ArrayBuffer>|null>(null);
  private closePdf=()=>{};
  private timer:ReturnType<typeof setTimeout>|undefined;
+ /** Called when a conversion (e.g. PowerPoint drawing the slides) has finished or failed. */
+ onsettled:()=>void=()=>{};
 
  constructor(readonly projectId:string,readonly sourceId:string,readonly fileName:string){
   const m=saved()[sourceId];
-  this.mode=m==='browser'&&!this.isPptx?'cached':m||'cached';
+  // The live view drew with the same built-in approximation as the page images, so it is gone;
+  // a saved choice of it shows the page images.
+  this.mode=m==='browser'?'cached':m||'cached';
   this.refresh().then(()=>this.apply());
  }
  /** The live view draws PPTX only. */
@@ -29,11 +33,13 @@ export class CoursePreview{
  get pdfReady(){return this.status?.status==='ready';}
 
  async refresh(){
+  const was=this.status?.status;
   try{this.status=await api.previewStatus(this.projectId,this.sourceId);this.error='';}
   catch(e){this.error=e instanceof ApiError?e.message:String(e);}
   // Follow a conversion while it runs.
   clearTimeout(this.timer);
   if(this.status&&['queued','running'].includes(this.status.status))this.timer=setTimeout(()=>this.refresh().then(()=>this.apply()),2500);
+  else if(was&&['queued','running'].includes(was))this.onsettled();
  }
 
  setMode(mode:PreviewMode){

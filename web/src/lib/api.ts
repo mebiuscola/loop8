@@ -41,7 +41,9 @@ export interface Project extends ProjectSummary{materialRevision?:number;weekly?
 export interface InteractiveJob{id:string;status:string;stage?:string;message?:string;}
 export interface ReaderParagraph{english:string;chinese:string;}
 export interface ReaderPage{sourceId:string;pageIndex:number;pageType?:string;paragraphs:ReaderParagraph[];closeReading:string;learningStale?:boolean;inspection?:{status?:string};hints?:{text:string;checked:boolean}[];}
-export interface CoursewareReader{sourceId:string;source:string;sourceHash:string;previewIssue?:string;notes?:string[];generated:boolean;stale:boolean;sourceChanged?:boolean;learningStale?:boolean;nativePageCount?:number;pages:ReaderPage[];review?:{status?:string;issues?:unknown[]}|null;}
+/** Who drew a deck's slide images: PowerPoint itself, a PDF, being drawn now, or the built-in approximation (with why). */
+export interface SlideEngine{kind:'powerpoint'|'pdf'|'converting'|'approximate';engine?:string;generated?:string;reason?:string;}
+export interface CoursewareReader{sourceId:string;source:string;sourceHash:string;renderKey?:string|null;drawnBy?:SlideEngine;previewIssue?:string;notes?:string[];generated:boolean;stale:boolean;sourceChanged?:boolean;learningStale?:boolean;nativePageCount?:number;pages:ReaderPage[];review?:{status?:string;issues?:unknown[]}|null;}
 export interface ReferenceParagraph{key:string;pageIndex:number|null;printedPage?:string|null;kind:string;english:string;chinese:string;status:'complete'|'pending'|'blocked'|string;}
 /** A reference's own glossary, compiled by AI from its text before translating (docs/API.md). */
 export interface ReferenceTerm{english:string;chinese:string;scope?:string;pages:number[];alternatives?:string[];}
@@ -57,7 +59,8 @@ export type SettingsSave={section:'model';profile:ModelProfile;acpPaths?:Record<
 /** Interactive job families with their own /api/<kind>/jobs endpoints (docs/API.md §7). */
 export type JobKind='acp'|'chatgpt'|'preview';
 export interface TestJob{id:string;status:string;stage?:string;message?:string;transport?:'acp'|'chatgpt'|'api'|'preview';}
-export interface PreviewStatus{status:'ready'|'queued'|'running'|'error'|'missing'|string;engine?:string;pages?:number;direct?:boolean;warning?:string;error?:string;stage?:string;}
+/** slides: the slide images were exported by PowerPoint (docs/API.md). */
+export interface PreviewStatus{status:'ready'|'queued'|'running'|'error'|'missing'|string;slides?:boolean;generated?:string;engine?:string;pages?:number;direct?:boolean;warning?:string;error?:string;stage?:string;}
 export interface InteractiveJobView extends InteractiveJob{phaseStarted?:number;authorizationUrl?:string;text?:string;modelLabel?:string;permission?:{id:string;title:string;details?:string;options:{optionId:string;name:string;kind:string}[]}|null;result?:{message?:string;models?:{modelId:string;name?:string}[];currentModel?:string;[k:string]:unknown};}
 export interface ChatgptStatus{connected:boolean;email:string;pending:boolean;permissionDeclined:boolean;error:string;}
 export type ProcessMode='preparation'|'reference'|'session'|'analysis'|'week';
