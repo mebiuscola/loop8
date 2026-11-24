@@ -18,13 +18,86 @@ test('Antigravity requests record per-phase timing, and show when the program an
   assert(first&&second,'two timings recorded');
   assert.equal(first.reusedProcess,false);assert.equal(second.reusedProcess,true,'the program stays open between requests');
   assert.equal(first.reusedSession,false);assert.equal(second.reusedSession,true,'a text request of the same document reuses its session');
-  for(const phase of ['starting','initialize','session','prompt','generating'])assert(phase in first.phases,'first request has '+phase+': '+JSON.stringify(first.phases));
+  for(const phase of ['starting','initialize','session','prompt','thinking','generating'])assert(phase in first.phases,'first request has '+phase+': '+JSON.stringify(first.phases));
   assert(!('session' in second.phases),'a reused session is not created again');
   const sum=Object.values(first.phases).reduce((a,b)=>a+b,0);
   assert(Math.abs(sum-first.total)<0.01,'phases add up to the total');
   const text=describeAcpTiming(first);
   assert.match(text,/^耗时 \d+\.\d 秒：/);assert.match(text,/新启动 Antigravity 程序/);
   assert.match(describeAcpTiming(second),/沿用已打开的 Antigravity 程序，沿用会话/);
-  assert.doesNotMatch(JSON.stringify(acpTimings),/first batch|second batch/,'no request text is kept');
+  assert(first.thoughtUpdates>=1,'thoughts are counted');assert.equal(first.toolCalls,0);
+  assert.doesNotMatch(JSON.stringify(acpTimings),/first batch|second batch|private thought/,'no request, reply or thought text is kept');
  }finally{console.log=quiet;await runtime.disconnect();}
+});
+
+const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const mockRuntime=()=>createAcpRuntime({validate:()=>{},launch:(exe,args,options)=>spawn(exe,[fixture.pathname.replace(/^\/(.:)/,'$1')],options)});
+
+// Pages of one deck share a session: the instructions (with the tool rules) go with the first page
+// only; later pages carry a short reminder and their own input. Every fourth page starts afresh.
+test('pages of a deck share a session for up to four pages, and the instructions are sent once',async()=>{
+ const runtime=mockRuntime(),quiet=console.log;console.log=()=>{};
+ try{
+  const heads=[];
+  for(let page=1;page<=5;page++)heads.push(JSON.parse(await runtime.run(settings,{system:'Read the slide.',user:'echo-head page '+page,images:[png],sessionGroup:'pages:deck'})));
+  assert.deepEqual(heads.map(h=>h.full),[true,false,false,false,true],'full instructions on the first page and again after four');
+  assert.equal(heads[0].tools,true,'the tool rules go with the instructions');
+  assert(heads.every(h=>h.images===1),'every page still sends its own image');
+  // A different instruction set in the same group (e.g. a translation request) is sent in full once.
+  const other=JSON.parse(await runtime.run(settings,{system:'Translate.',user:'echo-head translation',sessionGroup:'pages:deck'}));
+  assert.equal(other.full,true);
+ }finally{console.log=quiet;await runtime.disconnect();}
+});
+
+// Tool use beyond the limit stops the request; it is then asked once more without tools.
+test('tool use past the limit stops the request, records the tool kind, and a retry runs without tools',async()=>{
+ const runtime=mockRuntime(),quiet=console.log;console.log=()=>{};
+ try{
+  const error=await runtime.run(settings,{user:'use-tools on this slide',toolLimitMs:300}).then(()=>null,e=>e);
+  assert.equal(error?.category,'tool_timeout',String(error?.message));
+  assert.match(error.message,/工具调用超过/);
+  const retried=await runtime.run(settings,{user:'use-tools on this slide',noTools:true});
+  assert(retried.length>0,'the request without tools completes');
+  const last=acpTimings.at(-1);
+  assert.equal(last.noTools,true);
+  const head=JSON.parse(await runtime.run(settings,{user:'echo-head',noTools:true}));
+  assert.deepEqual([head.noTools,head.tools],[true,false],'no tool rules, an explicit "no tools" instead');
+  assert(acpTimings.some(t=>t.toolKinds?.search===1),'the kind of tool is recorded, not its query');
+ }finally{console.log=quiet;await runtime.disconnect();}
+});
+
+test('timings record how much each request sends (numbers only), so size can be compared with waiting',async()=>{
+ const runtime=mockRuntime(),quiet=console.log;console.log=()=>{};
+ try{
+  await runtime.run(settings,{system:'Read the slide.',user:'echo-head size',images:[png]});
+  const t=acpTimings.at(-1);
+  assert(t.promptChars>100,'characters sent: '+t.promptChars);
+  assert(Number.isInteger(t.imageKB));
+  assert.match(describeAcpTiming(t),/发送 \d+ 字符/);
+ }finally{console.log=quiet;await runtime.disconnect();}
+});
+
+test('with "保存 Antigravity 完整过程" on, every request leaves a full log; with it off, none',async()=>{
+ const {setAcpTraceDir,listTraces,tracePath,clearTraces}=await import('../lib/acp-trace.mjs');
+ const {mkdtemp,readFile,rm}=await import('node:fs/promises');const os=await import('node:os');const path=await import('node:path');
+ const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-trace-'));setAcpTraceDir(dir);
+ const runtime=mockRuntime(),quiet=console.log;console.log=()=>{};
+ try{
+  await runtime.run(settings,{user:'no log for this'});
+  assert.equal((await listTraces()).files.length,0,'off: nothing saved');
+  await runtime.run({...settings,acpTrace:true},{system:'Read the slide.',user:'first batch with a log',images:[png]});
+  const {files}=await listTraces();assert.equal(files.length,1);
+  const lines=(await readFile(tracePath(files[0].name),'utf8')).trim().split('\n').map(l=>JSON.parse(l));
+  assert.equal(lines[0].kind,'request');assert.match(lines[0].prompt,/first batch with a log/);assert.deepEqual(lines[0].images,[{type:'image/png',kb:0}]);
+  assert(lines.some(l=>l.kind==='agent_thought_chunk'&&/private thought/.test(JSON.stringify(l.data))),'thoughts are in the log');
+  assert(lines.some(l=>l.kind==='agent_message_chunk'),'the reply chunks are in the log');
+  const end=lines.at(-1);assert.equal(end.kind,'result');assert.equal(end.data.stopReason,'end_turn');assert(end.data.timing.total>=0);
+  // A failed request logs its error.
+  await runtime.run({...settings,acpTrace:true},{user:'use-tools on this slide',toolLimitMs:200}).catch(()=>{});
+  const failed=(await listTraces()).files.find(f=>f.name!==files[0].name);
+  const last=(await readFile(tracePath(failed.name),'utf8')).trim().split('\n').map(l=>JSON.parse(l)).at(-1);
+  assert.equal(last.kind,'error');assert.equal(last.data.category,'tool_timeout');
+  assert.throws(()=>tracePath('../settings.json'),/无效日志文件/);
+  assert.equal(await clearTraces(),2);assert.equal((await listTraces()).files.length,0);
+ }finally{console.log=quiet;await runtime.disconnect();setAcpTraceDir(null);await rm(dir,{recursive:true,force:true});}
 });

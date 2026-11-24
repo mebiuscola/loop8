@@ -57,6 +57,23 @@
  const pageTypeLabel:Record<string,string>={cover:'封面',agenda:'目录',section:'章节页',content:'',quote:'引文',image:'图片',ending:'结尾'};
 </script>
 
+{#snippet hintList(p:ReaderPage,n:number)}
+ {#if p.hints?.length}
+  {@const open=p.hints.filter(h=>!h.checked)}
+  <details class="hints" class:done={!open.length}>
+   <summary>{open.length?'解析提示 '+open.length+' 条 · 可对照原页核对':'解析提示已全部核对（'+p.hints.length+' 条）'}</summary>
+   <ul>
+    {#each p.hints as h (h.text)}
+     <li class:checked={h.checked}>
+      <span>{h.text}</span>
+      {#if oncheck}<button type="button" class="btn btn-quiet" disabled={busyHint===n+'|'+h.text} onclick={()=>check(n,h.text,!h.checked)}>{h.checked?'撤销':'已核对'}</button>{/if}
+     </li>
+    {/each}
+   </ul>
+  </details>
+ {/if}
+{/snippet}
+
 <div class="scroller" bind:this={scroller}>
  <div class="colhead" style:grid-template-columns={template}>
   {#if columns.original}<span class="kind original">原页</span>{/if}
@@ -101,23 +118,12 @@
       {:else}
        <p class="missing">尚未生成细读。</p>
       {/if}
+      <!-- Parse hints belong with the page's analysis; below the page only when this column is hidden. -->
+      {@render hintList(p,n)}
      </div>
     {/if}
    </div>
-   {#if p.hints?.length}
-    {@const open=p.hints.filter(h=>!h.checked)}
-    <details class="hints" class:done={!open.length}>
-     <summary>{open.length?'解析提示 '+open.length+' 条 · 可对照原页核对':'解析提示已全部核对（'+p.hints.length+' 条）'}</summary>
-     <ul>
-      {#each p.hints as h (h.text)}
-       <li class:checked={h.checked}>
-        <span>{h.text}</span>
-        {#if oncheck}<button type="button" class="btn btn-quiet" disabled={busyHint===n+'|'+h.text} onclick={()=>check(n,h.text,!h.checked)}>{h.checked?'撤销':'已核对'}</button>{/if}
-       </li>
-      {/each}
-     </ul>
-    </details>
-   {/if}
+   {#if !columns.notes}{@render hintList(p,n)}{/if}
   </section>
  {/each}
 </div>
@@ -146,6 +152,8 @@
  .hints.done{color:var(--fg-subtle);}
  .hints summary{cursor:pointer;width:max-content;}
  .hints ul{list-style:none;margin:var(--space-1) 0 0;padding:0;display:flex;flex-direction:column;gap:var(--space-1);}
+ .notes-col .hints{margin-top:var(--space-3);padding-left:var(--space-3);}
+ .notes-col .hints li{flex-direction:column;align-items:flex-start;gap:var(--space-1);}
  .hints li{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);background:var(--bg-raised);color:var(--fg-muted);}
  .hints li.checked span{text-decoration:line-through;color:var(--fg-subtle);}
  .hints li .btn{flex:none;height:24px;padding:0 var(--space-2);font-size:var(--text-xs);}

@@ -50,15 +50,17 @@ import {pptPages,pageText,pageImages} from './lib/pages.mjs';
 import {bodyParagraphs} from './lib/reader.mjs';
 import {storeSource,originalName,sourcePath,migrateSourceNames} from './lib/storage.mjs';
 import {UNSAFE_PORTS} from './lib/ports.mjs';
+import {setAcpTraceDir,listTraces,tracePath,clearTraces} from './lib/acp-trace.mjs';
 import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,readHintChecks,setHintCheck,checkpointFile,doubtRules} from './lib/doubts.mjs';
 import {previewService,pdfInfo} from './lib/preview.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),DATA=process.env.CLASSROOM_DATA||path.join(ROOT,'data');
+setAcpTraceDir(path.join(DATA,'diagnostics','acp'));   // full Antigravity logs, only when the setting is on
 await mkdir(path.join(DATA,'classes'),{recursive:true});
 try{for(const line of (await readFile(path.join(ROOT,'.env'),'utf8')).split(/\r?\n/)){const m=line.match(/^([A-Z_]+)=(.*)$/);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim().replace(/^['"]|['"]$/g,'');}}catch(e){if(e.code!=='ENOENT')throw e;}
 const defaults={modelProfiles:[],modelRoutes:{},baseUrl:process.env.LLM_BASE_URL||'https://api.openai.com/v1',apiKey:process.env.LLM_API_KEY||'',model:process.env.LLM_MODEL||'',outputTokenField:'max_completion_tokens',maxOutputTokens:12000,contextChars:180000,chunkChars:6500,mineruMode:'cloud',mineruToken:process.env.MINERU_API_TOKEN||'',mineruModel:'vlm',mineruLanguage:'en',mineruExecutable:'',mineruArgs:['-p','{input}','-o','{output}'],mineruUrl:'',mineruKey:''};
 Object.assign(defaults,{modelRoutingVersion:1,defaultProfileId:'',fallbackProfileId:''});
-defaults.previewEngine='auto';defaults.libreOfficePath='';defaults.visionEnabled=true;defaults.uploadConcurrency=4;defaults.contextConcurrency=3;defaults.structuredOutput=process.env.LLM_JSON_MODE!=='false';
+defaults.previewEngine='auto';defaults.libreOfficePath='';defaults.visionEnabled=true;defaults.uploadConcurrency=4;defaults.contextConcurrency=3;defaults.structuredOutput=process.env.LLM_JSON_MODE!=='false';defaults.acpTrace=false;
 Object.assign(defaults,{parseBaseUrl:'',parseModel:'',parseApiKey:'',parseConcurrency:2,compactPptImages:false,browserPath:'',fallbackEnabled:false,fallbackBaseUrl:'',fallbackModel:'',fallbackApiKey:''});
 const config=async()=>({...defaults,...await json(path.join(DATA,'settings.json'),{})});
 const classDir=id=>{if(!/^Week_[\w\-\u0080-\uffff]+$/.test(id)||id.includes('..'))throw Error('无效项目 ID。');return path.join(DATA,'classes',id);};
@@ -309,6 +311,7 @@ function validateSettings(s){validateModelRouting(s);
  if(!['auto','powerpoint','libreoffice','manual'].includes(s.previewEngine))throw Error('无效预览转换方式。');
  if(typeof s.visionEnabled!=='boolean')throw Error('图片分析开关无效。');
  if(typeof s.structuredOutput!=='boolean')throw Error('结构化输出设置必须为布尔值。');
+ if(s.acpTrace!==undefined&&typeof s.acpTrace!=='boolean')throw Error('保存 Antigravity 完整过程的设置必须为布尔值。');
  if(typeof s.fallbackEnabled!=='boolean')throw Error('备用模型开关无效。');
  if(s.fallbackEnabled&&!(s.modelRoutingVersion===2?s.fallbackProfileId:s.fallbackModel.trim()))throw Error('开启文献备用前请先选择备用模型。');
  for(const key of ['fallbackBaseUrl','fallbackApiKey','fallbackModel','parseBaseUrl','parseApiKey','parseModel','browserPath','baseUrl','apiKey','model','mineruExecutable','mineruUrl','mineruKey','mineruToken','mineruLanguage','libreOfficePath'])if(typeof s[key]!=='string')throw Error(`${key} 必须为文字。`);
@@ -361,7 +364,7 @@ const server=http.createServer(async(req,res)=>{
     }
     // delete-model removes one model; delete-connection removes every model of an API connection.
     else if(b.section==='delete-model'||b.section==='delete-connection'){const gone=new Set(b.section==='delete-model'?[b.profileId]:s.modelProfiles.filter(p=>(!p.provider||p.provider==='api')&&connectionOf(p)===b.connectionId).map(p=>p.id));s.modelProfiles=s.modelProfiles.filter(p=>!gone.has(p.id));if(gone.has(s.defaultProfileId))s.defaultProfileId='';if(gone.has(s.fallbackProfileId)){s.fallbackProfileId='';s.fallbackEnabled=false;}for(const task of Object.keys(s.modelRoutes))if(gone.has(s.modelRoutes[task]))s.modelRoutes[task]='';}
-    else {const allowed={models:['defaultProfileId'],routes:['modelRoutes','fallbackProfileId','fallbackEnabled'],mineru:['mineruToken','clearMineruToken','mineruLanguage','uploadConcurrency'],preview:['previewEngine','browserPath','libreOfficePath'],advanced:['contextConcurrency','parseConcurrency','compactPptImages','chunkChars','structuredOutput']}[b.section];if(!allowed)throw Error('无效设置分类。');s=mergeSettings(s,Object.fromEntries(allowed.filter(k=>Object.hasOwn(b,k)).map(k=>[k,b[k]])));}
+    else {const allowed={models:['defaultProfileId'],routes:['modelRoutes','fallbackProfileId','fallbackEnabled'],mineru:['mineruToken','clearMineruToken','mineruLanguage','uploadConcurrency'],preview:['previewEngine','browserPath','libreOfficePath'],advanced:['contextConcurrency','parseConcurrency','compactPptImages','chunkChars','structuredOutput','acpTrace']}[b.section];if(!allowed)throw Error('无效设置分类。');s=mergeSettings(s,Object.fromEntries(allowed.filter(k=>Object.hasOwn(b,k)).map(k=>[k,b[k]])));}
     validateSettings(s);await save(path.join(DATA,'settings.json'),s);
    }else if(method!=='GET')throw Error('无效设置操作。');
    const bundled=path.join(ROOT,'agy-acp-server','agy_acp_server.exe'),acpBundled=await access(bundled).then(()=>bundled,()=>'');
@@ -404,6 +407,12 @@ const server=http.createServer(async(req,res)=>{
   }
   if(parts[0]==='api'&&parts[1]==='settings'&&parts[2]==='test'&&parts[3]&&parts[4]==='cancel'&&method==='POST'){diagnostics.get(parts[3])?.controller?.abort();return respond(res,200,{ok:true});}
   // Where recent Antigravity requests spent their time (seconds per phase; no request or reply text).
+  // Full Antigravity request logs (setting "保存 Antigravity 完整过程"): list, download one, clear all.
+  if(url.pathname==='/api/acp/traces'&&method==='GET')return respond(res,200,{enabled:(await config()).acpTrace===true,...await listTraces()});
+  if(parts[0]==='api'&&parts[1]==='acp'&&parts[2]==='traces'&&parts.length===4&&method==='GET'){
+   const file=tracePath(decodeURIComponent(parts[3]));res.writeHead(200,{'Content-Type':'application/x-ndjson; charset=utf-8','Content-Disposition':'attachment; filename="'+path.basename(file)+'"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});return res.end(await readFile(file));
+  }
+  if(url.pathname==='/api/acp/traces-clear'&&method==='POST'){const b=await payload(req);if(b.confirm!==true)throw Error('请确认后再清除。');return respond(res,200,{deleted:await clearTraces()});}
   if(url.pathname==='/api/acp/timings'&&method==='GET')return respond(res,200,{timings:acpTimings});
   if(url.pathname==='/api/acp/connect'&&method==='POST'){
    const b=await payload(req);if(!['inspect','login','text','vision'].includes(b.action))throw Error('无效 ACP 操作。');

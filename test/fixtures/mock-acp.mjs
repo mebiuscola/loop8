@@ -25,6 +25,10 @@ acp.agent()
   const {sessionId,prompt}=ctx.params,text=prompt.filter(p=>p.type==='text').map(p=>p.text).join('');
   if(!authenticated)throw Error('Not authenticated');
   if(text.includes('crash-runtime'))process.exit(3);
+  // An agent that starts searching and does not finish unless tools are forbidden.
+  if(text.includes('use-tools')&&!text.includes('Do not call any tools')){await ctx.client.notify('session/update',{sessionId,update:{sessionUpdate:'tool_call',toolCallId:'t1',title:'Search the web',kind:'search',status:'in_progress'}});await new Promise(resolve=>waiting.set(sessionId,resolve));return {stopReason:'cancelled'};}
+  // Reports which parts of the instructions this request carried (for the session-reuse tests).
+  if(text.includes('echo-head')){const head=JSON.stringify({full:text.includes('Classroom task instructions (user-supplied Skill'),tools:text.includes('Tools are optional'),noTools:text.includes('Do not call any tools'),images:prompt.filter(p=>p.type==='image').length});await ctx.client.notify('session/update',{sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:head}}});return {stopReason:'end_turn'};}
   if(text.includes('slow-request')){await new Promise(resolve=>waiting.set(sessionId,resolve));return {stopReason:'cancelled'};}
   if(text.includes('need-permission')){const decision=await ctx.client.request('session/request_permission',{sessionId,toolCall:{toolCallId:'test-tool',title:'Inspect scratch directory',kind:'read',status:'pending',rawInput:{path:'scratch'}},options:[{optionId:'once',name:'Allow once',kind:'allow_once'},{optionId:'always',name:'Always allow',kind:'allow_always'},{optionId:'no',name:'Reject',kind:'reject_once'}]});if(decision.outcome.outcome==='cancelled')return {stopReason:'cancelled'};}
   let reply;

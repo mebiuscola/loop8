@@ -8,7 +8,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {testPdf} from '../lib/diagnostics.mjs';
-import {openApp,go,waitFor,waitText,click,fill} from './helpers/app.mjs';
+import {openApp,go,waitFor,waitText,click,fill,pickerOptions} from './helpers/app.mjs';
 async function until(fn){for(let i=0;i<200;i++){const value=await fn();if(value)return value;await sleep(40);}throw Error('Timed out waiting for browser state');}
 test('ACP settings, diagnostics, Ask permissions, navigation, cancellation and API compatibility work through real browser',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-acp-ui-')),exe=path.join(dir,'agy_acp_server.exe'),hook=path.join(dir,'hook.mjs'),fixture=fileURLToPath(new URL('./fixtures/mock-acp.mjs',import.meta.url)).replaceAll('\\','/');await writeFile(exe,'test fixture placeholder');await writeFile(path.join(dir,'localharness_external.exe'),'matching test helper');
@@ -54,7 +54,7 @@ test('ACP settings, diagnostics, Ask permissions, navigation, cancellation and A
    await click(ui,'刷新可用模型');
    await waitText(ui,/已登录，读取到 \d+ 个可用模型/,'main',{timeout:20000});
    await click(ui,'模型分配','.nav button');
-   await waitFor(ui,"[...(document.querySelector('#route-deepDive')?.options||[])].some(o=>o.value==='acp-test'&&!o.disabled)",{label:'Antigravity model offered for Deep Dive'});
+   await until(async()=>(await pickerOptions(ui,'route-deepDive')).includes('acp-test'));
    if(process.env.CLASSROOM_ACP_EVIDENCE){await mkdir(process.env.CLASSROOM_ACP_EVIDENCE,{recursive:true});await click(ui,'服务与账号','.nav button');await writeFile(path.join(process.env.CLASSROOM_ACP_EVIDENCE,'ACP-settings.png'),await ui.screenshot(1500,1000));await ui.screenshot(1440,960);}
    // Ask: a one-action permission is approved for that action only, and the answer is saved.
    await go(ui,'#/w/'+encodeURIComponent(p.id)+'/overview');

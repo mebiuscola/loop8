@@ -92,7 +92,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 | mode | 内容 | 用到的模型任务 |
 |---|---|---|
-| `preparation` | 课件识别、翻译、导读 | context, pptRecognition, pptTranslation, pptExplanation |
+| `preparation` | 课件识别、翻译、导读 | context, pptRecognition, pptTranslation, pptExplanation, deckReview（整课检查；未单独指定时跟随 pptRecognition。Antigravity 的思考强度随所选连接 `acpThinking`，可为整课检查单设较低强度） |
 | `session` | 本节课讲稿 | context, classroom, transcriptTranslation |
 | `analysis` | 本节课 Deep Dive | context, deepDive |
 | `week` | 整周 Deep Dive | context, weeklyDeepDive |
@@ -162,8 +162,11 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | GET | `/api/settings` | 旧版设置读取（脱敏）。当前前端未调用 |
 | POST | `/api/settings` | 旧版整体保存。当前前端未调用 |
 | GET | `/api/settings/editor` | 新设置编辑器数据（脱敏，含 `acpPaths`、`modelProfiles`）。`acpBundled`：随包分发的 `agy-acp-server\agy_acp_server.exe` 的绝对路径，文件不存在时为空字符串；只读，不写入设置 |
-| GET | `/api/acp/timings` | 最近 50 次 Antigravity 请求各阶段耗时（秒）：`{timings:[{at,total,phases:{starting,initialize,authenticate,session,config,prompt,generating},reusedProcess,reusedSession,images,model}]}`；不含请求或回复内容。Antigravity 的"测试"结果也附上这次的耗时 |
-| POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`，删除一个模型）、`delete-connection`（`connectionId`，删除一个 API 连接下的全部模型）、`models`、`routes`、`mineru`、`preview`、`advanced`。一个 API 连接可有多个模型：每个模型仍是一个 `profile`，同一连接的模型带相同的 `connectionId`（没有时等于自身 `id`，即单模型连接）；`baseUrl`、`outputTokenField`、`name`（连接名称）属于连接，保存其中一个模型时同步到同连接的其他模型，带新密钥或清除密钥时密钥也同步；新加的模型不带密钥时使用该连接已保存的密钥 |
+| GET | `/api/acp/traces` | Antigravity 完整日志列表（设置 `acpTrace` 为 true 时每次请求写一个文件到 `<data>/diagnostics/acp/`）：`{enabled, files:[{name,size,at}], totalBytes}`。日志含课程内容（发送的全文、思考、工具调用与结果、回复），只存在本机，从不打印 |
+| GET | `/api/acp/traces/:name` | 下载一个日志文件（JSON Lines：request、每条消息、permission、result 或 error） |
+| POST | `/api/acp/traces-clear` | 体：`{confirm:true}`，删除全部日志文件 |
+| GET | `/api/acp/timings` | 最近 50 次 Antigravity 请求各阶段耗时（秒）：`{timings:[{at,total,phases:{starting,initialize,authenticate,session,config,prompt,responding,thinking,tools,generating},reusedProcess,reusedSession,images,model,thoughtUpdates,toolCalls,toolKinds,toolTimeout?,noTools,promptChars,imageKB}]}`（promptChars：本次发送的文字字符数；imageKB：图片大小）（prompt：请求发出到 Antigravity 有任何动静；responding：有动静但还没开始思考；thinking：从第一段思考起；tools：智能体自己的工具调用；generating：从回答的第一个字起；思考内容只计数、不保存；toolKinds 只记工具类别的次数，例如 {search:2}，不记查询内容。工具调用累计超过 120 秒的请求会停止（toolTimeout），并以不使用工具的方式重新请求一次。Antigravity 可用的工具由 `skills/agent_tools.md` 规定（只用网页搜索辨认图片，外部信息标明来源）。课件每页各用一个新会话（2026-11-23 起不再共用：共用后上下文变长，并没有更快））；不含请求或回复内容。Antigravity 的"测试"结果也附上这次的耗时 |
+| POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`，删除一个模型）、`delete-connection`（`connectionId`，删除一个 API 连接下的全部模型）、`models`、`routes`、`mineru`、`preview`、`advanced`（advanced 含 `acpTrace`：保存 Antigravity 完整过程，默认关闭）。一个 API 连接可有多个模型：每个模型仍是一个 `profile`，同一连接的模型带相同的 `connectionId`（没有时等于自身 `id`，即单模型连接）；`baseUrl`、`outputTokenField`、`name`（连接名称）属于连接，保存其中一个模型时同步到同连接的其他模型，带新密钥或清除密钥时密钥也同步；新加的模型不带密钥时使用该连接已保存的密钥 |
 | POST | `/api/settings/model-test` | 测试某个模型连接。体：`{kind, profile}`，kind ∈ `ai/text/json/vision/inspect/login`。返回 `202` 任务 |
 | POST | `/api/settings/test` | 测试 MinerU、视觉模型等。体：`{kind, settings?, task?}` |
 | GET | `/api/settings/test/:jobId` | 测试结果 |

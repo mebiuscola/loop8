@@ -29,6 +29,7 @@
   try{
    const result:any=await quiet.run(()=>api.modelTest('inspect',model.accountProbe('acp')));
    if(Array.isArray(result?.models))model.setAccountModels('acp',result.models);
+   model.setThinkingLevels(result?.thinking?.options||[]);
    account.status='ok';
   }catch(e){failed(e);}
  }
@@ -37,7 +38,7 @@
    if(account.status!=='ok'){await job.run(()=>api.modelTest('login',model.accountProbe('acp')));account.status='ok';account.problem='';}
    const result:any=await job.run(()=>api.modelTest('inspect',model.accountProbe('acp')));
    const models=Array.isArray(result?.models)?result.models:[];
-   model.setAccountModels('acp',models);account.status='ok';account.problem='';
+   model.setAccountModels('acp',models);model.setThinkingLevels(result?.thinking?.options||[]);account.status='ok';account.problem='';
    job.state.message=models.length?'已登录，读取到 '+models.length+' 个可用模型。现在可以在"模型分配"中选择它们。':'已登录，但 Antigravity 没有返回可用模型。请稍后点"刷新可用模型"重试。';
   }catch(e){if(account.status!=='ok')failed(e);/* the message is shown by JobView */}
  }

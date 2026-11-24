@@ -5,15 +5,18 @@ import {api,ApiError,type Settings,type ModelProfile,type SettingsSave} from './
 
 export type AccountKind='acp'|'chatgpt';
 export interface AccountModel{modelId:string;name?:string;}
-export const NEW_PREFIX='new:';            // value of a model not yet saved as a profile: "new:acp:<modelId>"
+export const NEW_PREFIX='new:';            // value of a model not yet saved as a profile: "new:acp:<modelId>[#<thinking>]"
+/** A thinking level Antigravity offers (read with the model list). */
+export interface ThinkingLevel{value:string;name:string;}
 export const TASKS:[string,[string,string][]][]=[
- ['课件',[['pptRecognition','课件识别'],['pptTranslation','课件翻译'],['pptExplanation','课件解读'],['pptPreview','单页 PPT 试解析']]],
+ ['课件',[['pptRecognition','课件识别'],['pptTranslation','课件翻译'],['pptExplanation','课件解读'],['deckReview','整课检查'],['pptPreview','单页 PPT 试解析']]],
  ['参考文献',[['referenceTranslation','参考文献翻译'],['pdfRecognition','文献 AI 补救']]],
  ['课堂',[['classroom','课堂重建'],['transcriptTranslation','讲稿翻译']]],
  ['分析与提问',[['deepDive','本节 Deep Dive'],['weeklyDeepDive','整周 Deep Dive'],['context','材料背景整理'],['qa','提问（Ask）']]],
 ];
 
-const CACHE='classroom.next.accountModels';
+const CACHE='classroom.next.accountModels',LEVELS='classroom.next.acpThinkingLevels';
+const readLevels=():ThinkingLevel[]=>{try{const v=JSON.parse(localStorage.getItem(LEVELS)||'[]');return Array.isArray(v)?v:[];}catch{return [];}};
 const readCache=():Record<AccountKind,AccountModel[]>=>{try{return {acp:[],chatgpt:[],...JSON.parse(localStorage.getItem(CACHE)||'{}')};}catch{return {acp:[],chatgpt:[]};}};
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const comparable=({apiKey:_k,clearApiKey:_c,hasApiKey:_h,...rest}:ModelProfile)=>rest;
@@ -30,6 +33,8 @@ export class SettingsModel{
  loadError=$state('');
  profiles=$state<ModelProfile[]>([]);
  accountModels=$state<Record<AccountKind,AccountModel[]>>(readCache());
+ /** Thinking levels Antigravity offers, from the last model list it returned. */
+ thinkingLevels=$state<ThinkingLevel[]>(readLevels());
  acpPath=$state('');                       // draft of the ACP program path ('' = use the detected one)
  assign=$state({defaultId:'',modelRoutes:{} as Record<string,string>,fallbackProfileId:'',fallbackEnabled:false});
  mineru=$state<Record<string,any>>({});
@@ -53,7 +58,7 @@ export class SettingsModel{
   this.assign={defaultId:s.defaultProfileId,modelRoutes:{...s.modelRoutes},fallbackProfileId:s.fallbackProfileId,fallbackEnabled:s.fallbackEnabled};
   this.mineru={mineruToken:'',clearMineruToken:false,mineruLanguage:s.mineruLanguage,uploadConcurrency:s.uploadConcurrency};
   this.preview={previewEngine:s.previewEngine,browserPath:s.browserPath,libreOfficePath:s.libreOfficePath};
-  this.advanced={contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput};
+  this.advanced={contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput,acpTrace:s.acpTrace===true};
  }
 
  // ---- Antigravity program ----
@@ -67,6 +72,11 @@ export class SettingsModel{
   if(kind==='acp')return {...(existing?$state.snapshot(existing) as ModelProfile:{id:'antigravity-account',name:'Antigravity',model:''}),provider:'antigravity-acp',acpEntry:this.acpEntry,acpExecutable:this.acpExecutable};
   return existing?$state.snapshot(existing) as ModelProfile:{id:'chatgpt-account',name:'ChatGPT',provider:'chatgpt-plan',model:''};
  }
+ setThinkingLevels(levels:ThinkingLevel[]){
+  if(!Array.isArray(levels)||!levels.length)return;
+  this.thinkingLevels=levels.filter(l=>typeof l?.value==='string'&&l.value);
+  try{localStorage.setItem(LEVELS,JSON.stringify(this.thinkingLevels));}catch{/* private mode */}
+ }
  setAccountModels(kind:AccountKind,models:AccountModel[]){
   this.accountModels={...this.accountModels,[kind]:models};
   try{localStorage.setItem(CACHE,JSON.stringify(this.accountModels));}catch{/* private mode */}
@@ -79,23 +89,47 @@ export class SettingsModel{
   const ofKind=(k:AccountKind|'api')=>saved.modelProfiles.filter(p=>providerOf(p)===k);
   groups.push({label:'API 连接',items:ofKind('api').map(p=>[p.id,p.name+' · '+p.model])});
   for(const [kind,label] of [['acp','Antigravity 账号'],['chatgpt','ChatGPT 订阅']] as [AccountKind,string][]){
-   const items:[string,string][]=ofKind(kind).map(p=>[p.id,this.accountModels[kind].find(m=>m.modelId===p.model)?.name||p.model]);
-   for(const m of this.accountModels[kind])if(!ofKind(kind).some(p=>p.model===m.modelId))items.push([NEW_PREFIX+kind+':'+m.modelId,m.name||m.modelId]);
+   // One entry per model; for Antigravity the thinking level is picked separately (withThinking).
+   const items:[string,string][]=[],seen=new Set<string>();
+   for(const p of [...ofKind(kind).filter(p=>!p.acpThinking),...ofKind(kind)])if(!seen.has(p.model)){seen.add(p.model);items.push([p.id,this.accountModels[kind].find(m=>m.modelId===p.model)?.name||p.model]);}
+   for(const m of this.accountModels[kind])if(!seen.has(m.modelId)){seen.add(m.modelId);items.push([NEW_PREFIX+kind+':'+m.modelId,m.name||m.modelId]);}
    groups.push({label,items});
   }
   return groups.filter(g=>g.items.length);
  }
+ // ---- Antigravity model + thinking level ----
+ /** Model id and thinking level behind an assignment value (a saved profile or a "new:" value). */
+ parts(value:string):{kind:AccountKind|'api'|'';model:string;thinking:string}{
+  if(!value)return {kind:'',model:'',thinking:''};
+  if(value.startsWith(NEW_PREFIX)){const [,kind,...rest]=value.split(':');const [model,thinking='']=rest.join(':').split('#');return {kind:kind as AccountKind,model,thinking};}
+  const p=this.saved?.modelProfiles.find(x=>x.id===value);if(!p)return {kind:'',model:'',thinking:''};
+  return {kind:providerOf(p),model:p.model,thinking:p.acpThinking||''};
+ }
+ /** The entry of the model picker that stands for this value (one per Antigravity model). */
+ pickerValue(value:string){
+  const {kind,model}=this.parts(value);if(kind!=='acp')return value;
+  for(const g of this.options())for(const [v] of g.items)if(this.parts(v).kind==='acp'&&this.parts(v).model===model)return v;
+  return value;
+ }
+ /** The same Antigravity model with another thinking level ('' = the model's default). */
+ withThinking(value:string,thinking:string){
+  const {kind,model}=this.parts(value);if(kind!=='acp')return value;
+  const saved=this.saved?.modelProfiles.find(p=>providerOf(p)==='acp'&&p.model===model&&(p.acpThinking||'')===thinking);
+  return saved?saved.id:NEW_PREFIX+'acp:'+model+(thinking?'#'+thinking:'');
+ }
+ thinkingName(level:string){return this.thinkingLevels.find(l=>l.value===level)?.name||level;}
  labelOf(value:string){
   if(!value)return '';
-  if(value.startsWith(NEW_PREFIX)){const [,kind,...rest]=value.split(':');const id=rest.join(':');return (kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind as AccountKind].find(m=>m.modelId===id)?.name||id);}
+  const think=this.parts(value).thinking,suffix=think?' · 思考 '+this.thinkingName(think):'';
+  if(value.startsWith(NEW_PREFIX)){const {kind,model}=this.parts(value);return (kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind as AccountKind]?.find(m=>m.modelId===model)?.name||model)+suffix;}
   const p=this.saved?.modelProfiles.find(x=>x.id===value);if(!p)return '';
-  const kind=providerOf(p);return kind==='api'?(this.saved!.modelProfiles.filter(x=>providerOf(x)==='api'&&connectionOf(x)===connectionOf(p)).length>1?p.name+' · '+p.model:p.name):(kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind].find(m=>m.modelId===p.model)?.name||p.model);
+  const kind=providerOf(p);return kind==='api'?(this.saved!.modelProfiles.filter(x=>providerOf(x)==='api'&&connectionOf(x)===connectionOf(p)).length>1?p.name+' · '+p.model:p.name):(kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind].find(m=>m.modelId===p.model)?.name||p.model)+suffix;
  }
  /** What a task actually uses after defaults. */
  actual(task:string):string{
   const v=this.assign.modelRoutes[task];
   if(v)return this.labelOf(v);
-  if(task==='pptPreview')return this.actual('pptRecognition');
+  if(task==='pptPreview'||task==='deckReview')return this.actual('pptRecognition');
   return this.labelOf(this.assign.defaultId)||'未选择模型';
  }
 
@@ -111,7 +145,7 @@ export class SettingsModel{
  get mineruDirty(){const s=this.saved!,m=this.mineru;return !!m.mineruToken||!!m.clearMineruToken||m.mineruLanguage!==s.mineruLanguage||Number(m.uploadConcurrency)!==s.uploadConcurrency;}
  get assignDirty(){const s=this.saved;if(!s)return false;return !same(this.assign,{defaultId:s.defaultProfileId,modelRoutes:s.modelRoutes,fallbackProfileId:s.fallbackProfileId,fallbackEnabled:s.fallbackEnabled});}
  get previewDirty(){const s=this.saved;return !!s&&!same(this.preview,{previewEngine:s.previewEngine,browserPath:s.browserPath,libreOfficePath:s.libreOfficePath});}
- get advancedDirty(){const s=this.saved;return !!s&&!same(this.advanced,{contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput});}
+ get advancedDirty(){const s=this.saved;return !!s&&!same(this.advanced,{contextConcurrency:s.contextConcurrency,parseConcurrency:s.parseConcurrency,chunkChars:s.chunkChars,compactPptImages:s.compactPptImages,structuredOutput:s.structuredOutput,acpTrace:s.acpTrace===true});}
 
  // ---- saving ----
  private async send(payload:SettingsSave){const next=await api.saveSettings(payload);this.saved=next;return next;}
@@ -125,12 +159,12 @@ export class SettingsModel{
  /** Turns "new:acp:<model>" into a saved profile and returns its id. */
  private async materialize(value:string):Promise<string>{
   if(!value.startsWith(NEW_PREFIX))return value;
-  const [,kind,...rest]=value.split(':');const modelId=rest.join(':');
-  const existing=this.saved!.modelProfiles.find(p=>providerOf(p)===kind&&p.model===modelId);if(existing)return existing.id;
-  const name=(kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind as AccountKind].find(m=>m.modelId===modelId)?.name||modelId);
-  let id=(kind==='acp'?'acp-':'chatgpt-')+slug(modelId);while(this.saved!.modelProfiles.some(p=>p.id===id))id+='-2';
+  const {kind,model:modelId,thinking}=this.parts(value);
+  const existing=this.saved!.modelProfiles.find(p=>providerOf(p)===kind&&p.model===modelId&&(p.acpThinking||'')===thinking);if(existing)return existing.id;
+  const name=(kind==='acp'?'Antigravity · ':'ChatGPT · ')+(this.accountModels[kind as AccountKind].find(m=>m.modelId===modelId)?.name||modelId)+(thinking?' · 思考 '+this.thinkingName(thinking):'');
+  let id=(kind==='acp'?'acp-':'chatgpt-')+slug(modelId+(thinking?'-'+thinking:''));while(this.saved!.modelProfiles.some(p=>p.id===id))id+='-2';
   const profile:ModelProfile=kind==='acp'
-   ?{id,name,provider:'antigravity-acp',model:modelId,acpEntry:this.acpEntry,acpExecutable:this.acpExecutable,contextChars:180000,visionEnabled:true}
+   ?{id,name,provider:'antigravity-acp',model:modelId,...(thinking?{acpThinking:thinking}:{}),acpEntry:this.acpEntry,acpExecutable:this.acpExecutable,contextChars:180000,visionEnabled:true}
    :{id,name,provider:'chatgpt-plan',model:modelId,contextChars:180000,visionEnabled:true};
   await this.saveProfile(profile);
   return id;
