@@ -112,3 +112,11 @@ test('a request can opt out of the shared Antigravity session of its job',async(
  ]));
  assert.deepEqual(seen,['job',null]);
 });
+
+test('a short leftover joins the last glossary part instead of costing a request',()=>{
+ const units=[{text:'a'.repeat(30000),pageIndex:0},{text:'b'.repeat(30000),pageIndex:1},{text:'c'.repeat(600),pageIndex:2}];
+ const parts=termParts(units);
+ assert.equal(parts.length,2);
+ assert.deepEqual(parts[1].pages.map(p=>p.page),[2,3]);
+ assert.equal(termParts([...units.slice(0,2),{text:'c'.repeat(5000),pageIndex:2}]).length,3,'a longer last part stays on its own');
+});
