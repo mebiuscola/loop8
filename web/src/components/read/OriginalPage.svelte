@@ -21,9 +21,15 @@
  let aspect=$state(16/9);
  const n=$derived(pageIndex+1);
 
+ // A page is drawn when it comes within about two screens of the view (so the pages around the one
+ // being read are ready before they are reached) and then kept: moving back and forth never draws
+ // it again. Only the live PPTX preview, which is heavy, is released when the page leaves the view.
  onMount(()=>{
   if(large){near=true;return;}
-  const observer=new IntersectionObserver(([e])=>{near=e.isIntersecting;},{rootMargin:'600px 0px'});
+  const observer=new IntersectionObserver(([e])=>{
+   if(e.isIntersecting)near=true;
+   else if(mode==='browser')near=false;
+  },{rootMargin:'200% 0px'});
   observer.observe(host!);
   return ()=>observer.disconnect();
  });
@@ -77,7 +83,7 @@
 <div class="original" class:large bind:this={host} style:--aspect={aspect}>
  {#if mode==='cached'}
   <figure class="slide" class:ready={phase==='ready'}>
-   <img src={imageUrl} alt={'课件原页 第 '+n+' 页'} loading={large?'eager':'lazy'} decoding="async" onload={()=>phase='ready'} onerror={()=>{phase='error';note='原页预览读取失败。可在"⋯ › 原页预览"中改用其他方式。';}}/>
+   {#if near}<img src={imageUrl} alt={'课件原页 第 '+n+' 页'} decoding="async" onload={()=>phase='ready'} onerror={()=>{phase='error';note='原页预览读取失败。可在"⋯ › 原页预览"中改用其他方式。';}}/>{/if}
    {#if phase!=='ready'}<figcaption>{phase==='error'?note:'正在加载原页…'}</figcaption>{/if}
   </figure>
  {:else if mode==='pdf'}

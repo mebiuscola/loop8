@@ -11,7 +11,8 @@
  import TrialDialog from './TrialDialog.svelte';
  import Modal from '../Modal.svelte';
  import {CoursePreview} from '../../lib/preview.svelte';
- import {api,ApiError,type Project,type CoursewareReader as CR,type ReferenceReader as RR} from '../../lib/api';
+ import {readerCache,readerSignature} from '../../lib/reader-cache.svelte';
+ import {api,ApiError,type RedoPart,type Project,type CoursewareReader as CR,type ReferenceReader as RR} from '../../lib/api';
  import {router,courseHref} from '../../lib/router.svelte';
  import {store} from '../../lib/store.svelte';
  import {askContext} from '../../lib/ask-context.svelte';
@@ -39,26 +40,18 @@
 
  const href=(k:Kind,sourceId?:string,page=1)=>courseHref(project.id,'read',k+(sourceId?'/'+encodeURIComponent(sourceId)+'/p/'+page:''));
 
- // Reading data, cached per material and kind ("ppt:<id>" / "ref:<id>") and reloaded when its task
- // changes state. The kind is part of the key: a material whose role changed must never be shown
- // with the other kind's data.
- const keyOf=(k:Kind,id:string)=>k+':'+id;
- let readers=$state<Record<string,CR|RR|null>>({});
- let loadError=$state<Record<string,string>>({});
- const taskSignature=$derived(JSON.stringify(project.tasks||{}));
- let lastSignature='';
- async function load(k:Kind,id:string,force=false){
-  const key=keyOf(k,id);
-  if(!force&&key in readers)return;
-  readers[key]=readers[key]??null;
-  try{readers[key]=k==='ppt'?await api.reader(project.id,id):await api.referenceReader(project.id,id);delete loadError[key];}
-  catch(e){loadError[key]=e instanceof ApiError?e.message:String(e);}
- }
+ // Reading data, kept per material and kind while the app is open (lib/reader-cache.svelte.ts): coming
+ // back to this workspace shows it at once, and a material is read again only when its saved result
+ // changes, not on every progress update of a running task. The kind is part of the key: a material
+ // whose role changed must never be shown with the other kind's data.
+ const keyOf=(k:Kind,id:string)=>readerCache.key(project.id,k,id);
+ const readers=$derived(readerCache.data),loadError=$derived(readerCache.errors);
+ function load(k:Kind,id:string,force=false){const f=files[k].find(x=>x.id===id);if(f)return readerCache.load(project,k,f,force);}
  $effect(()=>{
-  const sig=taskSignature,force=sig!==lastSignature&&lastSignature!=='';lastSignature=sig;
-  const all=[...files.ppt.map(f=>['ppt',f.id] as const),...files.ref.map(f=>['ref',f.id] as const)];
-  // untrack: loading writes `readers`, which must not re-run this effect.
-  untrack(()=>{for(const [k,id] of all)load(k,id,force);});
+  const all=[...files.ppt.map(f=>['ppt',f] as const),...files.ref.map(f=>['ref',f] as const)];
+  const signatures=all.map(([k,f])=>readerSignature(project,k,f));
+  // untrack: loading writes the cache, which must not re-run this effect.
+  untrack(()=>{signatures;for(const [k,f] of all)readerCache.load(project,k,f);});
  });
 
  const statusOf=(k:Kind,id:string):MaterialStatus=>{
@@ -68,6 +61,8 @@
   return k==='ppt'?coursewareStatus(project,f,readers[key] as CR|null):referenceStatus(project,f,readers[key] as RR|null);
  };
  const current=$derived(file?readers[keyOf(kind,file.id)]:null);
+ // Pages of this courseware being generated right now (index → current step), shown on each page.
+ const generating=$derived(kind==='ppt'&&file?.aiParse?.status==='running'?((file.aiParse as {tasks?:Record<string,{phase?:string}>}).tasks||{}):null);
  // Reference paragraphs without a translation yet (e.g. refused by a model); they can be finished with another model.
  const untranslated=$derived(kind==='ref'&&current?(current as RR).summary.total-(current as RR).summary.completed:0);
  const status=$derived(file?statusOf(kind,file.id):null);
@@ -87,9 +82,9 @@
  const printed=$derived(kind==='ref'&&current?(current as RR).paragraphs.find(p=>p.pageIndex===page-1&&p.printedPage)?.printedPage||'':'');
  function onPage(n:number){
   page=n;
-  if(file)router.remember(href(kind,file.id,n));
+  if(file){router.remember(href(kind,file.id,n));readerCache.setPage(project.id,kind,file.id,n);}
  }
- function goPage(n:number){if(!total)return;const target=Math.min(total,Math.max(1,n));page=target;jump={page:target,seq:++seq};if(file)router.remember(href(kind,file.id,target));}
+ function goPage(n:number){if(!total)return;const target=Math.min(total,Math.max(1,n));page=target;jump={page:target,seq:++seq};if(file){router.remember(href(kind,file.id,target));readerCache.setPage(project.id,kind,file.id,target);}}
  $effect(()=>{
   if(!file){askContext.set(null);return;}
   askContext.set({label:file.name+' · 第 '+page+' 页',scope:'preparation',focus:{kind:'page',sourceId:file.id,pageIndex:page-1}});
@@ -118,6 +113,12 @@
   finally{starting=false;}
  }
 
+ // Redo one page; the job shows in the task panel and on the page while it runs.
+ async function redo(pageIndex:number,part:RedoPart){
+  if(!file)return;actionError='';
+  try{await api.aiParse(project.id,file.id,{pages:[pageIndex+1],part});await store.refresh();}
+  catch(e){actionError=e instanceof ApiError?e.message:String(e);}
+ }
  async function checkHint(n:number,hint:string,checked:boolean){
   if(!file)return;actionError='';
   try{await api.hintCheck(project.id,file.id,n,hint,checked);await load('ppt',file.id,true);store.refresh();}
@@ -150,7 +151,7 @@
   </div>
 
   {#if list.length}
-   <select aria-label="选择材料" value={file?.id} onchange={e=>router.go(href(kind,(e.currentTarget as HTMLSelectElement).value))}>
+   <select aria-label="选择材料" value={file?.id} onchange={e=>{const id=(e.currentTarget as HTMLSelectElement).value;router.go(href(kind,id,readerCache.lastPage(project.id,kind,id)));}}>
     {#each list as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
    </select>
    <div class="pager" aria-label="翻页">
@@ -221,7 +222,7 @@
   {:else if kind==='ppt'}
    {#key file?.id}
     <CoursewareReader projectId={project.id} reader={current as CR} columns={columns.ppt} {jump} onpage={onPage}
-     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} onenlarge={i=>openDialog('enlarge',i)} oncheck={checkHint}/>
+     mode={preview?.mode} pdf={preview?.pdf} pptx={preview?.pptx} reload={preview?.reload} pageCount={preview?.status?.pages||0} onenlarge={i=>openDialog('enlarge',i)} oncheck={checkHint} {generating} onredo={redo} ontrial={i=>openDialog('trial',i)}/>
    {/key}
   {:else}
    {#key file?.id}
