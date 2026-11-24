@@ -84,6 +84,27 @@
  {#if pdfError}<p class="warn">{pdfError}</p>{/if}
  {#if !reader.pdf&&columns.original}<p class="warn">这份参考文献没有可显示的原始 PDF，只显示文字。</p>{/if}
  {#if !shown}<p class="empty">请在上方至少勾选一栏。</p>{/if}
+ {#if reader.terminology&&columns.translation}
+  {@const g=reader.terminology}
+  <!-- AI-compiled from this reference only; kept apart from the original and the translation. -->
+  <details class="glossary">
+   <summary><span class="ai">AI 整理</span>本文术语 {g.terms.length} 条{#if g.status!=='complete'} · 只完成了一部分{/if}{#if !g.current} · 原文解析已更新，下次翻译时重新整理{/if}</summary>
+   {#if g.terms.length}
+    <dl>
+     {#each g.terms as t (t.english+'|'+(t.scope||''))}
+      <div class="term">
+       <dt lang="en">{t.english}</dt>
+       <dd><span lang="zh-CN">{t.chinese}</span>{#if t.alternatives?.length}<span class="alt">（也译作 {t.alternatives.join('、')}）</span>{/if}
+        {#if t.scope}<small>{t.scope}</small>{/if}
+        {#if t.pages.length}<small class="pages">PDF 第 {t.pages.slice(0,6).join('、')}{t.pages.length>6?' 等':''} 页</small>{/if}
+       </dd>
+      </div>
+     {/each}
+    </dl>
+   {:else}<p class="missing">没有整理出需要统一的术语。</p>{/if}
+   <p class="note">翻译前从这篇文献本身整理，翻译时每段只带上段内出现的术语；不使用课件的本周术语表。</p>
+  </details>
+ {/if}
 
  {#each groups.pages as g (g.index)}
   {@const n=g.index+1}
@@ -149,4 +170,14 @@
  .blocked{margin:0;font-size:var(--text-sm);color:var(--status-stopped-fg);}
  .warn{margin:var(--space-3) 0;font-size:var(--text-sm);color:var(--status-stopped-fg);}
  .empty{padding:var(--space-5) 0;color:var(--fg-muted);}
+ .glossary{margin:var(--space-3) 0;padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-left:2px solid var(--kind-analysis);border-radius:var(--radius-sm);background:var(--bg-raised);font-size:var(--text-sm);}
+ .glossary summary{cursor:pointer;color:var(--fg-muted);}
+ .ai{margin-right:var(--space-2);font-size:var(--text-xs);font-weight:var(--weight-medium);color:var(--kind-analysis);}
+ .glossary dl{margin:var(--space-2) 0 0;max-height:320px;overflow:auto;display:grid;gap:var(--space-1);}
+ .term{display:grid;grid-template-columns:minmax(120px,220px) 1fr;gap:var(--space-3);padding:var(--space-1) 0;border-bottom:1px solid var(--line);}
+ .term dt{font-family:var(--font-reading);color:var(--ink-700);}
+ .term dd{margin:0;display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-2);align-items:baseline;}
+ .term small{color:var(--fg-muted);font-size:var(--text-xs);}
+ .alt{color:var(--fg-muted);}
+ .glossary .note{margin:var(--space-2) 0 0;color:var(--fg-subtle);font-size:var(--text-xs);}
 </style>

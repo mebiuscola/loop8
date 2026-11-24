@@ -1,4 +1,5 @@
 import {translateReference,referenceProgress,referenceMarkdown} from './lib/reference-study.mjs';
+import {readReferenceTerms} from './lib/reference-terms.mjs';
 import {readingIndex,searchReading} from './lib/reading-index.mjs';
 import {registerReadingReferences} from './lib/reading-references.mjs';
 import {renderReadingCitations} from './lib/deep-dive.mjs';
@@ -226,15 +227,16 @@ async function run(p,settings,{origin,fresh=false,mode='preparation',sessionId,s
    const failed=outcomes.find(result=>result.status==='rejected');
    if(failed)throw failed.reason;
   }
-  const prompts={};for(const name of ['source_normalization','class_script','translation','deep_dive','deep_dive_plan','ppt_translation','ppt_close_reading','weekly_synthesis','class_script_repair','class_script_restore','reference_translation'])prompts[name]=await skill(name);
+  const prompts={};for(const name of ['source_normalization','class_script','translation','deep_dive','deep_dive_plan','ppt_translation','ppt_close_reading','weekly_synthesis','class_script_repair','class_script_restore','reference_translation','reference_terminology'])prompts[name]=await skill(name);
   const rootTask=mode==='session'?'classroom':mode==='analysis'?'deepDive':mode==='week'?'weeklyDeepDive':mode==='reference'?'referenceTranslation':'pptExplanation',resolved=resolveModel(settings,rootTask),rawModel=await pipeline(dir,{...resolved,modelProfiles:settings.modelProfiles,redactionKeys:[settings.apiKey,settings.parseApiKey,settings.fallbackApiKey]},{fresh,scope:['session','analysis'].includes(mode)?mode+':'+sessionId:mode==='reference'?'reference:'+sourceId:mode,onStatus:text=>stage(p,text),signal});
   const routeFor=(name,override)=>{const task=taskForStage(mode,name),actual=override||resolveModel(settings,task);usedModels[task]={model:actual.model,baseUrl:actual.baseUrl,profileId:actual.profileId||null};return actual;};
   const routed={text:(n,sys,u,o)=>rawModel.text(n,sys,u,{...o,provider:routeFor(n,mode==='reference'?o?.provider:undefined)}),object:(n,sys,u,v,o)=>rawModel.object(n,sys,u,v,{...o,provider:routeFor(n,mode==='reference'?o?.provider:undefined)}),cachedObject:(n,sys,u,v,o)=>rawModel.cachedObject(n,sys,u,v,o),remaining:rawModel.remaining,finish:rawModel.finish};
-  model=withTerminology(routed,await weeklyTerminology(p,dir),await skill('terminology'));
+  // A reference is translated with its own glossary (lib/reference-terms.mjs), not the week's courseware glossary.
+  model=mode==='reference'?routed:withTerminology(routed,await weeklyTerminology(p,dir),await skill('terminology'));
   const common={dir,model,prompts,stage,putClass,sessionIds,signal,existingOnly:mode!=='preparation',allowIncompleteMaterials:mode==='preparation'&&p.files.some(f=>f.role==='ppt'&&f.parsed)};
   const {context,missingMaterials}=mode==='reference'?{context:'',missingMaterials:[]}:await buildContext(p,settings,common);common.context=context;if(missingMaterials.length)warnings.push('部分材料未解析：'+missingMaterials.map(f=>f.name).join('、'));
   let referencePartial=false;
-  if(mode==='reference'){const file=p.files.find(f=>f.id===sourceId&&f.role==='reading');if(!file)throw Error('请选择参考文献。');const summary=await translateReference(p,file,settings,{...common,referenceProvider});referencePartial=summary.blocked>0;if(referencePartial)warnings.push(`${summary.blocked} 块被模型过滤，已保留原文，可仅补译缺失块。`);
+  if(mode==='reference'){const file=p.files.find(f=>f.id===sourceId&&f.role==='reading');if(!file)throw Error('请选择参考文献。');const summary=await translateReference(p,file,settings,{...common,referenceProvider});referencePartial=summary.blocked>0;if(summary.glossary?.error)warnings.push('本文术语表'+(summary.glossary.count?'只完成了一部分':'未生成')+'，译文未统一术语：'+summary.glossary.error);if(referencePartial)warnings.push(`${summary.blocked} 块被模型过滤，已保留原文，可仅补译缺失块。`);
   }else if(mode==='preparation'){
    const result=await preparation(p,settings,common);signal?.throwIfAborted();await publish(p,'preparation',result.files,{pages:result.pages,readerVersion:result.readerVersion},common);
   }else if(mode==='session'){
@@ -667,8 +669,8 @@ const server=http.createServer(async(req,res)=>{
      if(!s.modelProfiles.some(profile=>profile.id===options.referenceProfileId))throw Error('所选模型连接已不存在，请重新选择。');
      referenceProvider=resolveModel({...s,modelRoutes:{...s.modelRoutes,referenceTranslation:options.referenceProfileId}},'referenceTranslation');
     }
-    const workflowTasks=mode==='session'?['context','classroom','transcriptTranslation']:mode==='analysis'?['context','deepDive']:mode==='week'?['context','weeklyDeepDive']:mode==='reference'?['referenceTranslation']:['context','pptRecognition','pptTranslation','pptExplanation'];
-    const models=mode==='reading'?[]:workflowTasks.map(task=>task==='referenceTranslation'&&referenceProvider?referenceProvider:resolveModel(s,task));
+    const workflowTasks=mode==='session'?['context','classroom','transcriptTranslation']:mode==='analysis'?['context','deepDive']:mode==='week'?['context','weeklyDeepDive']:mode==='reference'?['referenceTranslation','referenceTerms']:['context','pptRecognition','pptTranslation','pptExplanation'];
+    const models=mode==='reading'?[]:workflowTasks.map(task=>(task==='referenceTranslation'||task==='referenceTerms'&&!s.modelRoutes?.referenceTerms)&&referenceProvider?referenceProvider:resolveModel(s,task));
     await checkModelConnections(models);
     if(mode==='reading'&&!p.files.some(f=>f.id===options.sourceId&&['reading','bb'].includes(f.role)&&/\.pdf$/i.test(f.name)))throw Error('请选择 Reading 或 BB PDF。');
     if(mode==='reading'){
@@ -696,7 +698,7 @@ const server=http.createServer(async(req,res)=>{
     const work=async(job={})=>{await run(p,s,{origin:url.origin,fresh:options.fresh===true,mode,sessionId,sessionIds:options.sessionIds,sourceId:options.sourceId,referenceProvider,signal:job.signal,onProgress:chatgpt&&!interactive?text=>job.onUpdate({sessionUpdate:'status',text,phase:'working'},''):undefined});const latest=await getClass(id);if(latest.status==='error')throw Error(latest.error);};
     if(interactive||chatgpt){
      const start=interactive?startAcpWorkflow:chatgptBatchJobs.start;
-     const batch=mode==='preparation'?{limit:s.parseConcurrency}:mode==='reference'?{limit:1,sessionGroup:randomUUID()}:undefined;
+     const batch=mode==='preparation'?{limit:s.parseConcurrency}:mode==='reference'?{limit:s.parseConcurrency,sessionGroup:randomUUID()}:undefined;
      const job=start(async job=>{
       editable(id);
       const latest=await getClass(id);
@@ -754,9 +756,9 @@ const server=http.createServer(async(req,res)=>{
    }
    if(action==='reference-reader'&&method==='GET'){
     const f=p.files.find(f=>f.id===url.searchParams.get('source')&&f.role==='reading');if(!f)throw Error('参考文献不存在。');
-    const {source,paragraphs,summary,stale,reader}=await referenceProgress(p,f,dir),settings=await config(),task=p.tasks?.[taskKey('reference',f.id)];
+    const {source,paragraphs,summary,stale,reader}=await referenceProgress(p,f,dir),settings=await config(),task=p.tasks?.[taskKey('reference',f.id)],glossary=await readReferenceTerms(dir,f.id,source);
     const needsPublish=summary.completed>0&&summary.completed===summary.total&&(!reader||reader.summary?.blocked>0);
-    return respond(res,200,{sourceId:f.id,source:f.name,sourceWarnings:{missingPages:source.parserCoverage?.missing||[],uncertaintyCount:source.uncertainties?.length||0},pdf:/\.pdf$/i.test(f.name),generated:summary.completed>0||summary.blocked>0,stale,needsPublish,paragraphs,summary,taskStatus:task?.status,taskError:task?.error,models:settings.modelProfiles.map(({id,name,model})=>({id,name,model}))});
+    return respond(res,200,{sourceId:f.id,source:f.name,sourceWarnings:{missingPages:source.parserCoverage?.missing||[],uncertaintyCount:source.uncertainties?.length||0},pdf:/\.pdf$/i.test(f.name),generated:summary.completed>0||summary.blocked>0,stale,needsPublish,paragraphs,summary,terminology:glossary?{terms:glossary.terms,status:glossary.status,error:glossary.error,current:glossary.current}:null,taskStatus:task?.status,taskError:task?.error,models:settings.modelProfiles.map(({id,name,model})=>({id,name,model}))});
    }
    if(action==='reference-file'&&['GET','HEAD'].includes(method)){
     const f=p.files.find(f=>f.id===url.searchParams.get('source')&&f.role==='reading');if(!f)throw Error('参考文献不存在。');return serveLocalFile(req,res,dir,f,{mime:/\.pdf$/i.test(f.name)?'application/pdf':'application/octet-stream'});

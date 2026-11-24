@@ -50,14 +50,16 @@ test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolat
    }else if(prompt.includes('PPT whole-deck review'))text='{"terms":[],"changes":[]}';
    else if(prompt.includes('Reconstruct classroom'))text=JSON.stringify({segments:input.cues.map(c=>({speaker:'Lecturer',chapter:'Comparison',english:c.text,cueIds:[c.id]}))});
    else if(prompt.includes('Paragraph translation'))text='{"chinese":"讲稿中文译文。"}';
+   else if(prompt.includes('Reference glossary'))text='{"terms":[]}';
    else if(prompt.includes('Reference bilingual translation')){
-    if(input.english.includes('FIRST_REFERENCE'))assert.equal(++firstReference,1);
-    if(input.english.includes('SECOND_REFERENCE')&&++secondReference===1){
+    const english=input.english??input.items.map(i=>i.english).join(' ');
+    if(english.includes('FIRST_REFERENCE'))assert.equal(++firstReference,1);
+    if(english.includes('SECOND_REFERENCE')&&++secondReference===1){
      const stopped=new Promise((_,reject)=>options.signal.addEventListener('abort',()=>reject(options.signal.reason),{once:true}));
      await writeFile(path.join(process.env.CLASSROOM_DATA,'reference-started'),'1');
      await stopped;
     }
-    text='{"chinese":"文献中文译文。"}';
+    text=input.items?JSON.stringify({translations:input.items.map(i=>({id:i.id,chinese:'文献中文译文。'}))}):'{"chinese":"文献中文译文。"}';
    }
    else if(prompt.includes('Deep Dive issue plan'))text='{"issues":["How does comparison work?"]}';
    else if(prompt.includes('Weekly synthesis')||prompt.includes('Deep Dive /'))text='## Analysis\\n\\nA grounded comparison.';
@@ -153,9 +155,11 @@ test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolat
  assert.equal((await request(route)).weekly.selectedSessionIds[0],session.id);
  const reference=(await request(route+'/upload',{method:'POST',headers:{'x-file-role':'reading','x-file-name':'Reference.pdf'},body:Buffer.concat([testPdf(),Buffer.from('Reference')])})).files.at(-1);
  await request(route+'/parsed?source='+reference.id,{method:'POST',headers:{'x-parse-format':'json'},body:JSON.stringify([
-  {type:'text',page_idx:0,text:'FIRST_REFERENCE Comparative reading reference evidence.'},
+  ...Array.from({length:12},(_,i)=>({type:'text',page_idx:0,text:'FIRST_REFERENCE Comparative reading reference evidence '+(i+1)+'.'})),
   {type:'text',page_idx:0,text:'SECOND_REFERENCE Another original reference paragraph.'}
  ])});
+ // The first 12 paragraphs fill one batch; one batch at a time, so the stop comes after they are saved.
+ await post('/api/settings/editor',{section:'advanced',parseConcurrency:1});
  const referenceJob=(await post(route+'/process',{mode:'reference',sourceId:reference.id})).chatgptJobId;
  const marker=path.join(dir,'reference-started');
  for(let i=0;i<200;i++){if(await access(marker).then(()=>true,()=>false))break;await sleep(20);}
@@ -163,9 +167,9 @@ test('ChatGPT default serves diagnostics, Ask, whole course workflows and isolat
  await post('/api/chatgpt/jobs/'+referenceJob+'/cancel',{});
  for(let i=0;i<200;i++){if((await request('/api/chatgpt/jobs/'+referenceJob)).status==='cancelled')break;await sleep(20);}
  assert.equal((await request('/api/chatgpt/jobs/'+referenceJob)).status,'cancelled');
- assert.equal((await request(route+'/reference-reader?source='+reference.id)).summary.completed,1);
+ assert.equal((await request(route+'/reference-reader?source='+reference.id)).summary.completed,12);
  await wait((await post(route+'/process',{mode:'reference',sourceId:reference.id})).chatgptJobId);
  const reader=await request(route+'/reference-reader?source='+reference.id);
- assert.equal(reader.summary.completed,2);
+ assert.equal(reader.summary.completed,13);
  assert.equal(reader.paragraphs[0].chinese,'文献中文译文。');
 });

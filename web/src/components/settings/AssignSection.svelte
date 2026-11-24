@@ -35,7 +35,7 @@
   {#each tasks as [task,label] (task)}
    <div class="row">
     <span class="title">{label}</span>
-    {@render assignment('route-'+task,model.assign.modelRoutes[task]||'',v=>model.assign.modelRoutes[task]=v,task==='pptPreview'||task==='deckReview'?'跟随课件识别':'使用默认模型',label)}
+    {@render assignment('route-'+task,model.assign.modelRoutes[task]||'',v=>model.assign.modelRoutes[task]=v,task==='pptPreview'||task==='deckReview'?'跟随课件识别':task==='referenceTerms'?'跟随参考文献翻译':'使用默认模型',label)}
     <span class="actual" class:missing={model.actual(task)==='未选择模型'} title={'实际使用：'+model.actual(task)}>→ {model.actual(task)}</span>
    </div>
   {/each}
