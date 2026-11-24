@@ -50,6 +50,7 @@ Windows 上运行的本地课程工作台：一个 Node.js 服务（`server.mjs`
 |---|---|---|
 | 全部测试 | `runtime\node.exe --test test/*.test.mjs`（约 4 分钟，应全部通过） | 项目根目录 |
 | 单个测试 | `runtime\node.exe --test test/<名称>.test.mjs` | 项目根目录 |
+| 用真实 PowerPoint 测原页绘制 | 先设环境变量 `CLASSROOM_POWERPOINT=1`，再跑 `test/powerpoint-slides.test.mjs`（会在后台打开 PowerPoint；平时的全部测试不会启动 PowerPoint） | 项目根目录 |
 | 前端类型检查 | `npm run check` | `web/` |
 | 构建前端 | `npm run build`（输出到 `public/next/`） | `web/` |
 | 前端开发服务器 | `npm run dev`（把 `/api` 转发到 `CLASSROOM_PORT`，默认 4317） | `web/` |

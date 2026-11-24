@@ -1,7 +1,7 @@
 import * as acp from '@agentclientprotocol/sdk';
 import {Readable,Writable} from 'node:stream';
 let count=0,authenticated=false;const waiting=new Map(),sessions=new Map(),referenceBatches=new Set();
-const configOptions=[{id:'model',name:'Model',category:'model',type:'select',currentValue:'mock-gemini',options:[{value:'mock-gemini',name:'Mock Gemini'},{value:'mock-other',name:'Mock Other'}]},{id:'thinking',name:'Thinking',category:'thought_level',type:'select',currentValue:'low',options:[{value:'low',name:'Low'},{value:'high',name:'High'}]}];
+const configOptions=[{id:'model',name:'Model',category:'model',type:'select',currentValue:'mock-gemini',options:[{value:'mock-gemini',name:'Mock Gemini'},{value:'mock-other',name:'Mock Other'},{value:'mock-plain',name:'Mock Plain'}]},{id:'thinking',name:'Thinking',category:'thought_level',type:'select',currentValue:'low',options:[{value:'low',name:'Low'},{value:'high',name:'High'}]}];
 acp.agent()
  .onRequest('initialize',async ctx=>{if(process.env.MOCK_ACP_HANG==='initialize')await new Promise(()=>{});return {protocolVersion:ctx.params.protocolVersion,agentCapabilities:{auth:{logout:{}},promptCapabilities:{image:true}},agentInfo:{name:'Mock official ACP fixture',version:'1'},authMethods:[{id:'oauth-personal',name:'Google personal'}]};})
  .onRequest('logout',async()=>{authenticated=false;return {};})
@@ -19,7 +19,9 @@ acp.agent()
  .onRequest('session/set_config_option',ctx=>{
   const {sessionId,configId,value}=ctx.params,options=sessions.get(sessionId);
   if(process.env.MOCK_ACP_IGNORE_CONFIG!=='1')options.find(option=>option.id===configId).currentValue=value;
-  return {configOptions:options};
+  // Like some real models, Mock Plain offers no thinking level.
+  const model=options.find(option=>option.id==='model').currentValue;
+  return {configOptions:model==='mock-plain'?options.filter(option=>option.category!=='thought_level'):options};
  })
  .onRequest('session/prompt',async ctx=>{
   const {sessionId,prompt}=ctx.params,text=prompt.filter(p=>p.type==='text').map(p=>p.text).join('');

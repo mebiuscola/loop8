@@ -52,7 +52,7 @@ import {bodyParagraphs} from './lib/reader.mjs';
 import {storeSource,originalName,sourcePath,migrateSourceNames} from './lib/storage.mjs';
 import {UNSAFE_PORTS} from './lib/ports.mjs';
 import {setAcpTraceDir,listTraces,tracePath,clearTraces} from './lib/acp-trace.mjs';
-import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,readHintChecks,setHintCheck,checkpointFile,doubtRules} from './lib/doubts.mjs';
+import {migrateDoubtCounts,pageHints,deckNotes,doubtSummary,exactPages,readHintChecks,setHintCheck,checkpointFile,doubtRules} from './lib/doubts.mjs';
 import {previewService,pdfInfo} from './lib/preview.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),DATA=process.env.CLASSROOM_DATA||path.join(ROOT,'data');
@@ -187,9 +187,22 @@ async function runReading(job,file,settings,force){
 }
 const outputNames=['Class_Script_Bilingual.md','Deep_Dive.md'];
 const diagnostics=new Map(),previews=previewService(ROOT),localFonts=localFontService();
+// Courseware slides are drawn by PowerPoint (lib/preview.mjs), started automatically for PPT/PPTX.
+// Test runs never start PowerPoint on the developer's computer unless CLASSROOM_POWERPOINT=1.
+const autoPowerPoint=s=>process.platform==='win32'&&['auto','powerpoint'].includes(s.previewEngine||'auto')&&(!process.env.NODE_TEST_CONTEXT||process.env.CLASSROOM_POWERPOINT==='1');
+const slideDeck=f=>f.role==='ppt'&&/\.pptx?$/i.test(f.name);
+/** Starts PowerPoint's slide images for a deck that has none yet (a failed one is retried only on request). */
+function startSlides(dir,f,s){if(slideDeck(f)&&autoPowerPoint(s))previews.ensure(dir,f,s).catch(()=>{});}
+/** Who drew a deck's slide images, for the reader: PowerPoint, a PDF, being drawn, or the built-in approximation (with why). */
+function slideEngine(st,f){
+ if(st.direct)return {kind:'pdf',engine:'原始 PDF'};
+ if(st.status==='ready')return st.slides?{kind:'powerpoint',generated:st.generated}:{kind:'pdf',engine:st.engine,generated:st.generated};
+ if(['queued','running'].includes(st.status))return {kind:'converting'};
+ return {kind:'approximate',reason:st.status==='error'?st.error:slideDeck(f)?'尚未用 PowerPoint 绘制。':''};
+}
 const pageCache=pageCacheService({root:ROOT,previews,fonts:localFonts});
 const materialWrites=new Map();
-const materialParser=aiMaterialService({root:ROOT,getClass,dirFor:classDir,previews,pageCache,mutate(id,change){if(!materialWrites.has(id))materialWrites.set(id,serialWriter());return materialWrites.get(id)(async()=>{const p=await getClass(id);change(p);await putClass(p);});}});
+const materialParser=aiMaterialService({root:ROOT,getClass,dirFor:classDir,previews,pageCache,prepareSlides:(dir,f,s)=>slideDeck(f)&&autoPowerPoint(s)?previews.settle(dir,f,s):null,mutate(id,change){if(!materialWrites.has(id))materialWrites.set(id,serialWriter());return materialWrites.get(id)(async()=>{const p=await getClass(id);change(p);await putClass(p);});}});
 function mergeSettings(saved,input){const s={...saved};for(const key of Object.keys(defaults))if(key in input){if(['apiKey','parseApiKey','fallbackApiKey','mineruKey','mineruToken'].includes(key)&&input[key]==='')continue;s[key]=input[key];}s.modelProfiles=mergeModelProfiles(saved,input);if(input.clearApiKey)s.apiKey='';if(input.clearParseApiKey)s.parseApiKey='';if(input.clearFallbackApiKey)s.fallbackApiKey='';if(input.clearMineruKey)s.mineruKey='';if(input.clearMineruToken)s.mineruToken='';return s;}
 async function classes(){const results=[];for(const d of await readdir(path.join(DATA,'classes'),{withFileTypes:true})){if(d.isDirectory()){const p=await json(path.join(DATA,'classes',d.name,'project.json'),null);if(p)results.push(migrateWeek(p));}}for(const pending of await pendingWeeks(DATA)){const index=results.findIndex(p=>p.id===pending.id),value=pendingProject(pending);if(index<0)results.push(value);else results[index]=value;}return results.sort((a,b)=>b.created.localeCompare(a.created));}
 for(const p of await classes()){await recoverMaterialCommits(classDir(p.id),async change=>{const current=await getClass(p.id);change(current);await putClass(current);Object.assign(p,current);});if(p.weekDeletionPending||await materialDeleteJournal(classDir(p.id)))continue;for(const f of p.files)if(f.aiParse?.status==='running'){f.aiParse.status='interrupted';f.aiParse.stage='上次解析被中断，可继续';f.aiParse.tasks={};f.progress='解析中断，可继续';}await migrateSourceNames(p,classDir(p.id),putClass);await migrateOutputs(p,classDir(p.id),putClass);const pending=await json(path.join(classDir(p.id),'.session-delete.json'),null);if(pending){p.deletionPending={sessionId:pending.sessionId,summary:pending.summary};p.status='error';p.stage='课堂删除未完成';}if(p.status==='running'){for(const f of p.files)if(f.parseStatus==='running'&&p.tasks?.[taskKey('reading',f.id)]?.status==='running'){f.parseStatus=f.parsed?'ready':'pending';delete f.progress;}for(const task of Object.values(p.tasks||{}))if(task.status==='running'){task.status='interrupted';task.error='Previous task was interrupted; saved results are available.';}p.status='interrupted';p.stage='上次处理被中断；原始材料和已有输出已保留，可重新处理。';}await recoverMineruArchives(p,classDir(p.id),putClass);await migrateDoubtCounts(p,classDir(p.id));for(const [key,task] of Object.entries(p.tasks||{}))if(task.status==='queued'&&task.request?.sourceId){const list=translationQueue.get(p.id)||[];list.push({key,options:task.request});translationQueue.set(p.id,list);}await putClass(p);await migrateReadingCitations(p,classDir(p.id));}
@@ -572,10 +585,10 @@ const server=http.createServer(async(req,res)=>{
    if(action==='hint-check'&&method==='POST'){
     if(p.weekDeletionPending)throw Error('本周正在删除。');const b=await payload(req),f=p.files.find(f=>f.id===b.sourceId&&f.aiParse);if(!f)throw Error('材料没有 AI 解析结果。');
     if(f.aiParse.status==='running')throw Error('这份材料正在解析，完成后再核对。');
-    const checkpoint=await json(checkpointFile(dir,f),null),page=checkpoint?.pages?.find(x=>x?.page===Number(b.page));
-    if(!page||typeof b.hint!=='string'||!pageHints(page).includes(b.hint))throw Error('这一页没有这条提示。');
+    const checkpoint=await json(checkpointFile(dir,f),null),page=checkpoint?.pages?.find(x=>x?.page===Number(b.page)),exact=f.role==='ppt'&&exactPages(await previews.status(dir,f).catch(()=>null));
+    if(!page||typeof b.hint!=='string'||!pageHints(page,{exact}).includes(b.hint))throw Error('这一页没有这条提示。');
     const checks=await setHintCheck(dir,f.id,page.page,b.hint,b.checked!==false);
-    const summary=doubtSummary(checkpoint,f.role==='ppt',checks);
+    const summary=doubtSummary(checkpoint,f.role==='ppt',checks,{exact});
     await writeProject(id,latest=>{const g=latest.files?.find(x=>x.id===f.id);if(g?.aiParse)Object.assign(g.aiParse,summary);latest.revision=(latest.revision||0)+1;return latest;});
     return respond(res,200,{sourceId:f.id,page:page.page,checked:checks[String(page.page)]||[],hints:summary.hints});
    }
@@ -617,7 +630,7 @@ const server=http.createServer(async(req,res)=>{
     const placed=await storeSource(p,dir,{name,role,session,bytes});p.lastUpload={kind:placed.kind,name:placed.name,requestedName:name};
     if(placed.existing){if(session&&session.srtId!==placed.existing.id){session.srtId=placed.existing.id;session.revision++;p.revision++;if(session.audio&&!session.audio.srtId){session.audio.srtId=placed.existing.id;session.audio.srtHash=digest(bytes);}}await putClass(p);return respond(res,201,p);}
     const fid=randomUUID(),f={id:fid,name:placed.name,originalName:name,stored:placed.stored,sha256:placed.sha256,role,...(session?{sessionId:session.id}:{}),size:bytes.length,parseStatus:role==='ppt'?'awaiting-json':role==='reading'||role==='bb'&&/\.pdf$/i.test(name)?'pending':'ready'};p.files.push(f);p.revision++;if(session){session.srtId=fid;session.revision++;if(session.audio&&!session.audio.srtId){session.audio.srtId=fid;session.audio.srtHash=digest(bytes);}}else p.materialRevision++;await putClass(p);
-    return respond(res,201,p);
+    if(role==='ppt')startSlides(dir,f,await config());return respond(res,201,p);
    }
    if(action==='parsed'&&method==='POST'){
     editable(id);const f=p.files.find(f=>f.id===url.searchParams.get('source'));if(!f||!(['ppt','reading'].includes(f.role)||f.role==='bb'&&/\.pdf$/i.test(f.name)))throw Error('请选择原始 PPT、Reading 或 BB PDF。');editableSource(id,f.id);
@@ -658,13 +671,16 @@ const server=http.createServer(async(req,res)=>{
      // (checked by hash above); finishing them raises the week's material revision, so comparing with
      // the older whole-week guide would call them outdated again forever. Only the original counts.
      if(!pages?.length)pages=f.parsed?(await pptPages(dir,f)).map(page=>({sourceId:f.id,source:f.name,pageIndex:page.pageIndex,paragraphs:bodyParagraphs(page).map(english=>({english,chinese:''})),closeReading:'',inspection:page.externalInspection})):[];
+     startSlides(dir,f,await config());const slideState=await previews.status(dir,f),drawnBy=slideEngine(slideState,f),exact=exactPages(slideState);
      let renderKey=null,previewIssue='';try{renderKey=(await pageCache.describe(dir,f,await config())).renderKey;}catch(e){previewIssue=e.message;}
      pages=pages.map(page=>({...page,closeReading:compactCoursewareCitations(page.closeReading||'',p.files),learningStale:!!(page.closeReading||page.paragraphs?.some(p=>p.chinese))&&(!page.renderKey||page.renderKey!==renderKey)}));
      // Each page's hints (doubts from parsing) and whether the reader has checked them; file-wide notes once.
      const checkpoint=f.aiParse?await json(checkpointFile(dir,f),null):null,checks=checkpoint?await readHintChecks(dir,f.id):{};
-     if(checkpoint)pages=pages.map(page=>{const own=checkpoint.pages?.find(x=>x?.page===page.pageIndex+1),done=checks[String(page.pageIndex+1)]||[];return own?{...page,hints:pageHints(own).map(text=>({text,checked:done.includes(text)}))}:page;});
-     const notes=checkpoint?deckNotes(checkpoint):[];
-     return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,review:f.aiParse?.review||null,notes,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!learningReady&&!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
+     if(checkpoint)pages=pages.map(page=>{const own=checkpoint.pages?.find(x=>x?.page===page.pageIndex+1),done=checks[String(page.pageIndex+1)]||[];return own?{...page,hints:pageHints(own,{exact}).map(text=>({text,checked:done.includes(text)}))}:page;});
+     const notes=checkpoint?deckNotes(checkpoint,{exact}):[];
+     // Counts shown on the overview follow the same rule: recount once the slides are drawn exactly.
+     if(checkpoint&&f.aiParse&&f.aiParse.status!=='running'){const summary=doubtSummary(checkpoint,true,checks,{exact});if(summary.hints!==f.aiParse.hints||JSON.stringify(summary.notes)!==JSON.stringify(f.aiParse.notes||[]))await writeProject(id,latest=>{const g=latest.files?.find(x=>x.id===f.id);if(g?.aiParse&&g.aiParse.status!=='running')Object.assign(g.aiParse,{hints:summary.hints,notes:summary.notes});latest.revision=(latest.revision||0)+1;return latest;});}
+     return respond(res,200,{sourceId:f.id,source:f.name,sourceHash,renderKey,previewIssue,drawnBy,review:f.aiParse?.review||null,notes,learningStale:pages.some(page=>page.learningStale),nativePageCount:/\.pptx$/i.test(f.name)?pptxSlideCount(await readFile(sourcePath(dir,f.stored))):undefined,generation,legacy:!!reader?.legacy||!!generation&&!reader,generated:learningReady||!!reader?.pages.some(page=>page.sourceId===f.id),stale:reportChanged||!learningReady&&!!a&&(a.materialRevision!==p.materialRevision||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash)),sourceChanged:reportChanged||pages.some(page=>page.sourceHash&&page.sourceHash!==sourceHash),pages});
     }
    }
    if(action==='session-delete-plan'&&method==='GET')return respond(res,200,(await deletionPlan(p,url.searchParams.get('session'),dir)).summary);

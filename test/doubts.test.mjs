@@ -6,7 +6,7 @@ import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {needsWork,pageHints,deckNotes,doubtSummary,reviewOpen,migrateDoubtCounts,DOUBT_VERSION} from '../lib/doubts.mjs';
+import {exactPages,needsWork,pageHints,deckNotes,doubtSummary,reviewOpen,migrateDoubtCounts,DOUBT_VERSION} from '../lib/doubts.mjs';
 import {contentListDocument,contentHash} from '../lib/materials.mjs';
 import {browserExecutable,launchRenderer} from '../lib/browser-render.mjs';
 import {openApp,waitFor,waitText,click,go} from './helpers/app.mjs';
@@ -27,7 +27,12 @@ test('only unreadable pages need work; doubts are page hints; the font warning i
  assert.equal(doubtSummary(c,true,{2:['第二行小字“Bhabha 1994”看不清']}).hints,2,'checked hints are not counted');
  assert.equal(needsWork({page:1,status:'partial',uncertainties:['x']},false),false);
  assert.equal(needsWork({page:1,status:'unreadable',uncertainties:['x']},false),true);
- assert.deepEqual(pageHints({uncertainties:['渲染检查发现 2 个文字区域可能裁切或超出页面。','1 个文本框可能溢出，可用 PDF 核对','2 个文字区域可能裁切或超出页面，需核对原件']}),['2 个文字区域可能超出页面或被裁切，请对照原页（或 PDF 预览）核对。'],'one overflow finding reported by three checks is one hint');
+ assert.deepEqual(pageHints({uncertainties:['渲染检查发现 2 个文字区域可能裁切或超出页面。','1 个文本框可能溢出，可用 PDF 核对','2 个文字区域可能裁切或超出页面，需核对原件']}),['2 个文字区域可能超出页面或被裁切，请对照原页核对。'],'one overflow finding reported by three checks is one hint');
+ // With PowerPoint's own slide images, the approximate drawing's findings (overflow, missing fonts) are not hints.
+ assert.deepEqual(pageHints({uncertainties:['2 个文字区域可能裁切或超出页面，需核对原件','图例颜色难以区分']},{exact:true}),['图例颜色难以区分']);
+ assert.deepEqual(deckNotes(c,{exact:true}),[]);
+ assert.deepEqual(doubtSummary({pages:[{page:1,uncertainties:['1 个文本框可能溢出，可用 PDF 核对']}]},true,{},{exact:true}),{incomplete:0,hints:0,notes:[],doubtVersion:DOUBT_VERSION});
+ assert.equal(exactPages({status:'ready',slides:true}),true);assert.equal(exactPages({status:'error'}),false);assert.equal(exactPages(null),false);
  assert.equal(reviewOpen(c.deckReview),false,'suggested edits that failed verification leave nothing to do');
  assert.equal(reviewOpen({issues:[{kind:'request',error:'timeout'}]}),true);
 });
@@ -59,7 +64,7 @@ test('existing results are recounted once at startup, without re-parsing; hints 
   assert.equal(await readFile(path.join(folder,'Parsed/deck/ppt_task.json'),'utf8'),stored,'the parse result itself is untouched');
 
   const reader=(await api('/reader?source=deck')).data;
-  assert.deepEqual(reader.notes,[FONT]);
+  assert.deepEqual(reader.notes,[],'a PDF is drawn exactly, so the font note of the approximate drawing is not shown');
   assert.deepEqual(reader.pages.map(pg=>(pg.hints||[]).length),[0,1,1,1]);
   const hint='第二行小字“Bhabha 1994”看不清';
   assert.equal((await api('/hint-check',{sourceId:'deck',page:2,hint:'不存在的提示'})).ok,false,'only an existing hint can be checked');
@@ -75,11 +80,10 @@ test('existing results are recounted once at startup, without re-parsing; hints 
   await waitText(ui,'Slides.pdf','main');
   await ui.evaluate("document.querySelector('main details.details')?.setAttribute('open','');true");
   const details=await waitFor(ui,"document.querySelector('main details.details')?.innerText");
-  assert.match(details,/1 页未能识别/);assert.match(details,/3 页有解析提示/);assert.match(details,/本机缺少课件字体/);
+  assert.match(details,/1 页未能识别/);assert.match(details,/3 页有解析提示/);assert.doesNotMatch(details,/本机缺少课件字体/,'a PDF is drawn exactly: no font note');
   assert.match(details,/整课检查已完成 · 2 条修改建议未通过核对，没有采用/);
   assert.doesNotMatch(details,/疑点|待处理/);
   await go(ui,'/w/'+id+'/read/ppt/deck/p/2');
-  await waitText(ui,'本机缺少课件字体','.statusline');
   await waitFor(ui,"[...document.querySelectorAll('section[data-page=\"2\"] details.hints summary')].some(s=>s.textContent.includes('解析提示 1 条'))",{label:'page 2 shows its hint'});
   assert(await ui.evaluate("!!document.querySelector('section[data-page=\"2\"] .notes-col details.hints')"),'the hints sit in the analysis column of the page');
   assert.equal(await ui.evaluate("document.querySelector('section[data-page=\"1\"] details.hints')"),null,'no hint box on a page whose only doubt was the font warning');
@@ -117,4 +121,19 @@ test('doubt rules from skills/doubt_rules.md reach the model; editing them keeps
   await (await service.start(p.id,'r',s,{origin:'http://local'})).done;
   assert.equal(systems.length,2,'changing the doubt rules does not re-parse finished pages');
  }finally{await rm(root,{recursive:true,force:true});await rm(dir,{recursive:true,force:true});}
+});
+test('an old count without a saved result keeps only pages never completed',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-doubts-old-'));
+ try{
+  // Counted before 2.28.0 ("pages with any doubt"); the parse result itself was not kept.
+  const done={id:'ref',role:'reading',name:'Reading.pdf',aiParse:{status:'done',completed:8,total:8,incomplete:2}};
+  const partial={id:'deck',role:'ppt',name:'Deck.pptx',aiParse:{status:'partial',completed:5,total:8,incomplete:6}};
+  const running={id:'busy',role:'ppt',name:'Busy.pptx',aiParse:{status:'running',completed:1,total:8,incomplete:1}};
+  const p={files:[done,partial,running]};
+  assert.equal(await migrateDoubtCounts(p,dir),true);
+  assert.deepEqual([done.aiParse.incomplete,done.aiParse.hints,done.aiParse.notes,done.aiParse.doubtVersion],[0,0,[],DOUBT_VERSION],'all pages were recognised');
+  assert.equal(partial.aiParse.incomplete,3,'only the pages never completed');
+  assert.equal(running.aiParse.incomplete,1,'a running parse is left alone');
+  assert.equal(await migrateDoubtCounts(p,dir),false,'recounted once');
+ }finally{await rm(dir,{recursive:true,force:true});}
 });

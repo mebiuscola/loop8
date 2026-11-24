@@ -111,10 +111,10 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/projects/:id/reader?version=` | 课件阅读数据（逐页原文、译文、细读）。有 AI 解析时，每页带 `hints:[{text, checked}]`（解析疑点，不影响页面状态），并带整份课件的 `notes`（例如本机缺少课件字体） |
+| GET | `/api/projects/:id/reader?version=` | 课件阅读数据（逐页原文、译文、细读）。有 AI 解析时，每页带 `hints:[{text, checked}]`（解析疑点，不影响页面状态），并带整份课件的 `notes`（例如本机缺少课件字体）。`renderKey`：当前原页图片的版本；`drawnBy`：原页由谁绘制 `{kind:"powerpoint"|"pdf"|"converting"|"approximate", engine?, generated?, reason?}`（approximate 为内置近似绘制，reason 说明为什么没有用 PowerPoint）。打开 PPT/PPTX 时若还没有 PowerPoint 绘制的原页，会在后台开始绘制 |
 | GET | `/api/projects/:id/page-image?source=&page=` | 缓存的页面截图。带 `ETag`；请求带相同的 `If-None-Match` 时返回 304（不重新发送图片） |
-| POST | `/api/projects/:id/preview?source=` | 生成预览。体：`{force?}`，返回 `202` |
-| GET | `/api/projects/:id/preview-status?source=` | 预览状态 |
+| POST | `/api/projects/:id/preview?source=` | 生成预览。体：`{force?}`，返回 `202`。**PowerPoint 绘制原页（2026-11-24）：** 用本机 PowerPoint 时，打开课件副本（只读、无窗口、不运行宏），把每页（含隐藏页）导出为 1920 像素宽的 PNG，同时另存 PDF；这些 PNG 就是阅读页和发给模型的原页图片。PPT/PPTX 上传、打开阅读页、生成导读前会自动开始（导读会等它完成；失败时用内置近似绘制，只在用户点"用 PowerPoint 重新生成原页"时重试）。`force:true` 重新绘制。脚本以 `-ExecutionPolicy Bypass` 只对本次运行放行（Windows 默认禁止运行脚本）。测试中不自动启动 PowerPoint，除非设置 `CLASSROOM_POWERPOINT=1` |
+| GET | `/api/projects/:id/preview-status?source=` | 预览状态。`slides:true` 表示原页图片由 PowerPoint 导出；`generated` 为生成时间 |
 | GET | `/api/projects/:id/preview-file?source=` | 预览 PDF |
 | POST | `/api/projects/:id/preview-pdf?source=` | 关联用户导出的 PDF（原始字节，≤150MB） |
 | POST | `/api/projects/:id/preview-clear?source=` | 清理预览 |
@@ -167,7 +167,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | POST | `/api/acp/traces-clear` | 体：`{confirm:true}`，删除全部日志文件 |
 | GET | `/api/acp/timings` | 最近 50 次 Antigravity 请求各阶段耗时（秒）：`{timings:[{at,total,phases:{starting,initialize,authenticate,session,config,prompt,responding,thinking,tools,generating},reusedProcess,reusedSession,images,model,thoughtUpdates,toolCalls,toolKinds,toolTimeout?,noTools,promptChars,imageKB}]}`（promptChars：本次发送的文字字符数；imageKB：图片大小）（prompt：请求发出到 Antigravity 有任何动静；responding：有动静但还没开始思考；thinking：从第一段思考起；tools：智能体自己的工具调用；generating：从回答的第一个字起；思考内容只计数、不保存；toolKinds 只记工具类别的次数，例如 {search:2}，不记查询内容。工具调用累计超过 120 秒的请求会停止（toolTimeout），并以不使用工具的方式重新请求一次。Antigravity 可用的工具由 `skills/agent_tools.md` 规定（只用网页搜索辨认图片，外部信息标明来源）。课件每页各用一个新会话（2026-11-23 起不再共用：共用后上下文变长，并没有更快））；不含请求或回复内容。Antigravity 的"测试"结果也附上这次的耗时 |
 | POST | `/api/settings/editor` | 分区保存。体：`{section, …}`。section ∈ `model`（体含 `profile`、`acpPaths?`）、`delete-model`（`profileId`，删除一个模型）、`delete-connection`（`connectionId`，删除一个 API 连接下的全部模型）、`models`、`routes`（`modelRoutes`、`modelThinking`、`fallbackProfileId`、`fallbackEnabled`）、`mineru`、`preview`、`advanced`（advanced 含 `acpTrace`：保存 Antigravity 完整过程，默认关闭）。一个 API 连接可有多个模型：每个模型仍是一个 `profile`，同一连接的模型带相同的 `connectionId`（没有时等于自身 `id`，即单模型连接）；`baseUrl`、`outputTokenField`、`name`（连接名称）属于连接，保存其中一个模型时同步到同连接的其他模型，带新密钥或清除密钥时密钥也同步；新加的模型不带密钥时使用该连接已保存的密钥。**思考强度（2026-11-24）：** `modelThinking` 为每项功能单独设置思考强度 `{<功能>:<级别>, _default:<默认模型的级别>}`，与所选模型分开保存；没有设置的功能跟随所跟随的功能（单页试解析、整课检查跟随课件识别，参考文献术语整理跟随参考文献翻译）或默认模型，都没有时用模型自身的设置（Antigravity 连接的 `acpThinking`）。发送方式：Antigravity 切换会话的思考选项（级别来自读取模型列表）；API 连接加 OpenAI 兼容参数 `reasoning_effort`（low/medium/high）；ChatGPT 订阅加 `reasoning:{effort}`（级别来自该模型列出的级别，没有时为 low/medium/high）。API 与 ChatGPT 设置了思考强度时计入模型标识（`routeHash`），未设置时与以前相同 |
-| POST | `/api/settings/model-test` | 测试某个模型连接。体：`{kind, profile}`，kind ∈ `ai/text/json/vision/inspect/login`。返回 `202` 任务 |
+| POST | `/api/settings/model-test` | 测试某个模型连接。体：`{kind, profile}`，kind ∈ `ai/text/json/vision/inspect/login`。返回 `202` 任务。Antigravity 的 `inspect`（读取模型列表）结果中，`models[]` 每项带 `thinkingLevels:[{value,name}]`：该模型可选的思考强度，`[]` 表示此模型没有（2026-11-24 起逐个模型读取，只切换会话设置、不发送请求） |
 | POST | `/api/settings/test` | 测试 MinerU、视觉模型等。体：`{kind, settings?, task?}` |
 | GET | `/api/settings/test/:jobId` | 测试结果 |
 | POST | `/api/settings/test/:jobId/cancel` | 停止测试 |
