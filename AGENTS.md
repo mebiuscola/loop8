@@ -1,7 +1,7 @@
 # Classroom Local · 给 AI 开发助手的项目规则
 
 本文件同时供 Codex（读 `AGENTS.md`）和 Claude Code（`CLAUDE.md` 引用本文件）使用。
-开始任何修改前先读完本文件，再读 `docs/STATUS.md`（当前进度与待办）、`PRODUCT.md` 和 `docs/API.md`。
+开始任何修改前先读完本文件，再读 `docs/STATUS.md`（当前进度与待办）、`docs/ARCHITECTURE.md`（系统结构与关键机制）、`PRODUCT.md` 和 `docs/API.md`。
 
 ## 项目是什么
 
@@ -17,7 +17,7 @@ Windows 上运行的本地课程工作台：一个 Node.js 服务（`server.mjs`
 | `skills/` | **本应用调用 AI 时使用的提示词**（不是开发助手的 skills） | 只在明确要求时修改 |
 | `public/` | 新前端构建产物（`public/next/`）和几个独立页面（原页渲染、引文原文对照）与第三方库 | `public/next/` 只由构建生成，不手改 |
 | `test/` | `node --test` 测试 | 新功能和修复都要补测试 |
-| `docs/` | 开发文档：进度（`STATUS.md`）、接口清单（`API.md`）、问题清单（`UI-ISSUES.md`）、信息架构（`IA-PROPOSAL.md`） | 随改随更新 |
+| `docs/` | 开发文档：进度（`STATUS.md`）、系统结构与关键机制（`ARCHITECTURE.md`）、接口清单（`API.md`）、问题清单（`UI-ISSUES.md`）、信息架构（`IA-PROPOSAL.md`） | 随改随更新 |
 | `data/` | **用户的私人课程资料与设置（含凭据）** | **禁止读取内容、修改、删除或提交** |
 | `runtime/`, `agy-acp-server/`, `node_modules/` | 随包分发的可执行文件与依赖 | 不要修改 |
 | `vendor/`, `public/vendor/` | 第三方库（pdf-lib、pdf.js、pptx 渲染） | 不要手改 |
@@ -58,7 +58,7 @@ Windows 上运行的本地课程工作台：一个 Node.js 服务（`server.mjs`
 - **接口：** 前端只依赖 `docs/API.md` 中列出的接口。新增或修改接口时先改文档。
 - **界面验证：** 改完界面要在浏览器里实际打开检查（截图或逐步操作），不能只看代码就宣布完成。
 - **问题记录：** 用户反馈的界面问题记在 `docs/UI-ISSUES.md`，修复后在对应条目标注。
-- **沟通：** 用户用中文交流；用通俗的话说明做了什么、为什么，技术细节从简。
+- **沟通：** 用户用中文交流；用通俗的话说明做了什么、为什么，技术细节从简；发现问题直接说。用户说"先给方案"时只给方案、不改文件；说"检查日志"时只统计时间、数量和结构。
 
 ## 命令（Windows，本机）
 
@@ -78,7 +78,7 @@ Windows 上运行的本地课程工作台：一个 Node.js 服务（`server.mjs`
 
 本项目由 Claude Code 和 Codex 等助手在**同一个文件夹**里轮流开发。进度靠 git 和 `docs/STATUS.md` 传递，不靠对话记录。
 
-- **开始时：** 读本文件 → `docs/STATUS.md` → `git status`、`git log --oneline -15`、`git branch`，弄清当前分支和未完成的事。
+- **开始时：** 读本文件 → `docs/STATUS.md` → `docs/ARCHITECTURE.md`（改到相关部分时）→ `git status`、`git log --oneline -15`、`git branch`，弄清当前分支和未完成的事。
 - **结束或换手前：** 提交全部改动（不留未提交的半成品）；更新 `docs/STATUS.md` 的"当前状态"和"下一步"，与改动一起提交。
 - **不要同时运行两个助手改这个文件夹。** 需要同时进行时，给另一个助手单独的分支和单独的文件夹（`git worktree`），完成后再合并。
 - **先问用户，再做：** 调用任何模型或外部服务（包括用用户的账号测试）、推送（`git push`）、删除分支或数据、修改 `skills/`。用户的一次同意只对那一次操作有效。
