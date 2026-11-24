@@ -536,7 +536,11 @@ const server=http.createServer(async(req,res)=>{
     const models=tasks.map(task=>materialSettings(settings,task));
     await checkModelConnections(models);
     if(await materialDeleteJournal(dir)||requestLocks.has(id))throw Error('此课程正在保存或清理，请稍后再试。');
-    const options={origin:url.origin,fresh:b.fresh===true,retryIssues:b.retryIssues===true,retryFailed:b.retryFailed===true,teachingPart:b.teachingPart};
+    // pages + part: redo chosen courseware pages only (the rest of the deck is kept).
+    if(b.pages!==undefined&&(f.role!=='ppt'||!Array.isArray(b.pages)||!b.pages.length||b.pages.length>200||b.pages.some(n=>!Number.isInteger(n)||n<1)||b.fresh||b.retryIssues||b.retryFailed||b.teachingPart))throw Error('无效的重做页面。');
+    if(b.part!==undefined&&!['all','translation','explanation'].includes(b.part))throw Error('无效的重做内容。');
+    if(b.pages&&(!f.aiParse?.total||b.pages.some(n=>n>f.aiParse.total)))throw Error('请选择这份课件中存在的页面。');
+    const options={origin:url.origin,fresh:b.fresh===true,retryIssues:b.retryIssues===true,retryFailed:b.retryFailed===true,teachingPart:b.teachingPart,...(b.pages?{pages:b.pages,part:b.part||'all'}:{})};
     const acpFallback=settings.fallbackProfileId&&settings.modelProfiles.some(p=>p.id===settings.fallbackProfileId&&p.provider==='antigravity-acp')&&(options.retryIssues||settings.fallbackEnabled&&!usesChatGPT(models));
     if(hasAcp(settings,tasks)||acpFallback){
      const batch=f.role==='ppt'?{limit:settings.parseConcurrency}:undefined;

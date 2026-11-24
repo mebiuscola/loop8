@@ -60,7 +60,7 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/projects/:id/ai-parse` | 体：`{sourceId, fresh?, retryIssues?, retryFailed?, teachingPart?}`。PPT 走 pptRecognition/Translation/Explanation，PDF 走 pdfRecognition。本周已有任务在跑时拒绝 |
+| POST | `/api/projects/:id/ai-parse` | 体：`{sourceId, fresh?, retryIssues?, retryFailed?, teachingPart?, pages?, part?}`。PPT 走 pptRecognition/Translation/Explanation，PDF 走 pdfRecognition。本周已有任务在跑时拒绝。**单页重做（2026-11-24）：** `pages`（页码数组，只用于已完成的课件页，不能与 fresh、retryIssues、retryFailed、teachingPart 同用）加 `part`：`all` 重新识别、翻译和解读，`translation` 只重新翻译，`explanation` 只重新解读。只重做这些页，其他页不变；沿用这份课件已保存的规则（本周其他材料变化不会让其他页重做）；不复用旧回复。原结果在新结果保存前保留，失败或停止时放回原结果（任务显示"重做未完成 / 已停止重做 · 保留原来的结果"）。完成后整课检查只重新检查该页所在的一组 |
 | POST | `/api/projects/:id/ai-parse-cancel` | 体：`{sourceId}` |
 | GET | `/api/projects/:id/ai-partial?source=` | 查看部分结果 |
 | POST | `/api/projects/:id/task-dismiss` | 确认（"知道了"）一个失败或停止的任务。体：`{key}`。记在任务上：`tasks[key].dismissed` = 被确认的那次运行（`finished||started` + `|` + `error`）；同一任务再次运行后失败会重新显示 |

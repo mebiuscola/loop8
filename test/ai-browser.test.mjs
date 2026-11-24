@@ -79,6 +79,15 @@ test('real isolated browser renders PPTX and PDF, sends page images, imports val
   }finally{await ui.close();}
   await api(url+'/ai-partial-import',{sourceId:partial.id,confirm:true});const accepted=await api(url+'/analysis?source='+partial.id);assert.deepEqual(accepted.coverage.missing,[2]);assert.equal(accepted.pages[1].status,'unreadable');
   const beforeRetry=calls;await api(url+'/ai-parse',{sourceId:partial.id,retryFailed:true});await waitFile(partial.id);assert.equal(calls-beforeRetry,3);assert.equal(requests.filter(r=>r.source==='partial.pdf'&&r.page===1).length,1);
+  // One courseware page done again: only that page is sent, the other pages stay as they were.
+  const deckId=p.files[0].id,beforeRedo=calls,pagesBefore=(await api(url+'/analysis?source='+deckId)).pages;
+  await api(url+'/ai-parse',{sourceId:deckId,pages:[2],part:'all'});const redone=await waitFile(deckId);assert.equal(redone.aiParse.status,'done',redone.aiParse.error);
+  assert.equal(calls-beforeRedo,1,'only page 2 is sent: '+redone.aiParse.stage+' '+(redone.aiParse.error||''));assert.deepEqual(requests.slice(-1).map(r=>r.page),[2]);
+  const pagesAfter=(await api(url+'/analysis?source='+deckId)).pages;assert.equal(pagesAfter.length,6);for(const i of [0,2,3,4,5])assert.deepEqual(pagesAfter[i].originalText,pagesBefore[i].originalText);
+  await assert.rejects(api(url+'/ai-parse',{sourceId:deckId,pages:[9],part:'all'}),/存在的页面|无效/);
+  // An unchanged slide image is answered without the image.
+  const firstImage=await fetch(base+url+'/page-image?source='+deckId+'&page=1'),etag=firstImage.headers.get('etag');await firstImage.arrayBuffer();
+  const sameImage=await fetch(base+url+'/page-image?source='+deckId+'&page=1',{headers:{'if-none-match':etag}});assert.equal(sameImage.status,304);
 
   const editor=await api('/api/settings/editor');
   const profile=editor.modelProfiles.find(item=>item.model==='mock-vision');
