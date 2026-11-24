@@ -122,3 +122,18 @@ test('doubt rules from skills/doubt_rules.md reach the model; editing them keeps
   assert.equal(systems.length,2,'changing the doubt rules does not re-parse finished pages');
  }finally{await rm(root,{recursive:true,force:true});await rm(dir,{recursive:true,force:true});}
 });
+test('an old count without a saved result keeps only pages never completed',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'classroom-doubts-old-'));
+ try{
+  // Counted before 2.28.0 ("pages with any doubt"); the parse result itself was not kept.
+  const done={id:'ref',role:'reading',name:'Reading.pdf',aiParse:{status:'done',completed:8,total:8,incomplete:2}};
+  const partial={id:'deck',role:'ppt',name:'Deck.pptx',aiParse:{status:'partial',completed:5,total:8,incomplete:6}};
+  const running={id:'busy',role:'ppt',name:'Busy.pptx',aiParse:{status:'running',completed:1,total:8,incomplete:1}};
+  const p={files:[done,partial,running]};
+  assert.equal(await migrateDoubtCounts(p,dir),true);
+  assert.deepEqual([done.aiParse.incomplete,done.aiParse.hints,done.aiParse.notes,done.aiParse.doubtVersion],[0,0,[],DOUBT_VERSION],'all pages were recognised');
+  assert.equal(partial.aiParse.incomplete,3,'only the pages never completed');
+  assert.equal(running.aiParse.incomplete,1,'a running parse is left alone');
+  assert.equal(await migrateDoubtCounts(p,dir),false,'recounted once');
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
