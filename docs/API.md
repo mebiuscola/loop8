@@ -112,7 +112,7 @@ SRT 字幕通过 `upload` 上传，`X-File-Role: srt`。
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/projects/:id/reader?version=` | 课件阅读数据（逐页原文、译文、细读）。有 AI 解析时，每页带 `hints:[{text, checked}]`（解析疑点，不影响页面状态），并带整份课件的 `notes`（例如本机缺少课件字体） |
-| GET | `/api/projects/:id/page-image?source=&page=` | 缓存的页面截图 |
+| GET | `/api/projects/:id/page-image?source=&page=` | 缓存的页面截图。带 `ETag`；请求带相同的 `If-None-Match` 时返回 304（不重新发送图片） |
 | POST | `/api/projects/:id/preview?source=` | 生成预览。体：`{force?}`，返回 `202` |
 | GET | `/api/projects/:id/preview-status?source=` | 预览状态 |
 | GET | `/api/projects/:id/preview-file?source=` | 预览 PDF |
