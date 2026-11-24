@@ -4,9 +4,12 @@ import {taskStatus,type StatusKind} from './status';
 
 export interface ClassStatus{kind:StatusKind;text:string;}
 
-/** Same freshness rule as lib/workflow.mjs scriptState. */
-export function scriptStale(project:Project,s:Session){
- return !!s.generation&&(s.materialRevision!==project.materialRevision||s.outputRevision!==s.revision);
+/**
+ * Same freshness rule as lib/workflow.mjs scriptState: a lecture script follows only its own subtitles
+ * (they are the only source of what was said; materials only help correct terms), 2026-11-24.
+ */
+export function scriptStale(_project:Project,s:Session){
+ return !!s.generation&&s.outputRevision!==s.revision;
 }
 
 export function scriptStatus(project:Project,s:Session):ClassStatus{
@@ -14,7 +17,7 @@ export function scriptStatus(project:Project,s:Session):ClassStatus{
  if(task?.status==='running')return {kind:'running',text:'讲稿生成中'};
  if(!s.srtId)return {kind:'idle',text:'等待字幕'};
  if(s.generation){
-  if(scriptStale(project,s))return {kind:'stale',text:s.outputRevision!==s.revision?'字幕已更换 · 建议更新讲稿':'课件已变更 · 建议更新讲稿'};
+  if(scriptStale(project,s))return {kind:'stale',text:'字幕已更换 · 建议更新讲稿'};
   // The last run failed or stopped, e.g. a regeneration: say so; the earlier script stays readable.
   if(task&&['error','partial'].includes(task.status)){const k=taskStatus(task);return {kind:k,text:(k==='stopped'?'上次生成已停止':'上次生成失败'+(/content_filter/.test(task.error||'')?' · 模型过滤':''))+' · 仍显示之前的讲稿'};}
   return {kind:'done',text:'讲稿已就绪'};

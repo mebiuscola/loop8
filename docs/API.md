@@ -38,7 +38,7 @@
 | GET | `/api/projects/:id/week-delete-plan` | 删除前的影响摘要 |
 | POST | `/api/projects/:id/week-delete` | 体：`{confirm:true}`。永久删除整周 |
 
-项目对象的主要字段：`id, name, created, status, stage, files[], bbText, revision, materialRevision, sessions[], chat[], tasks{}, preparation, generation`。
+项目对象的主要字段：`id, name, created, status, stage, files[], bbText, revision, materialRevision, materialInputs, sessions[], chat[], tasks{}, preparation, generation`。`materialInputs`（2026-11-24）：`{revision, sources:{<材料 id 或 BB_Info>:{name, role, hash}}}`，本周各材料被"课程上下文"读取部分的指纹，`revision` 等于计算时的 `materialRevision`；讲稿（session）、`analysis` 和 `weekly` 生成时记下当时的 `sources`（字段名同为 `materialInputs`），用来判断 Deep Dive 是否过时（规则见 `lib/workflow.mjs`）。讲稿只在本节字幕更换时过时。
 
 材料的 AI 解析状态 `files[].aiParse` 中：`incomplete` 是未能识别、需要重试的页数；`hints` 是还有未核对提示的页数；`notes` 是整份材料的附注（如缺少字体）。提示不影响页面状态（2026-11-23 起；旧结果在启动时按已保存的结果重新计数，不重新解析）。
 
