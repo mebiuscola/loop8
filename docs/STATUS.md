@@ -18,7 +18,7 @@
 ## 下一步
 
 1. 开发流程整理（2026-11-24，已并入 `main`，未推送）：`.gitattributes` 统一换行符为 LF；`scripts/test-server.mjs` 启动测试副本（不自动连 Antigravity、不自动启动 PowerPoint）；接受 `localhost`；ACP 登录测试按时间等待；`AGENTS.md` 写入隐私文件和注意事项。
-2. 导读"按旧图生成"误判修复（2026-11-24，已并入 `main`，未推送）：页面缓存分出 `imageKey`，Edge 更新或改绘制代码不再让 PowerPoint / PDF 绘制的课件导读被判为过时，生成导读时也不再丢弃已完成的页（见 `docs/ARCHITECTURE.md` 第 2 节）。2.33.0 改过绘制代码，用户更新到含此修复的版本前，PDF 课件的导读可能显示"按旧图生成"。新增 `docs/ARCHITECTURE.md`（系统结构与关键机制）。
+2. 导读"按旧图生成"误判修复（2026-11-24，已并入 `main`，未推送）：页面缓存分出 `imageKey`，Edge 更新或改绘制代码不再让 PowerPoint / PDF 绘制的课件导读被判为过时，生成导读时也不再丢弃已完成的页（见 `docs/ARCHITECTURE.md` 第 2 节）。讲稿只跟随本节字幕；Deep Dive 按材料内容指纹判断是否过时（`lib/material-inputs.mjs`，`docs/ARCHITECTURE.md` 第 7 节）。2.33.0 改过绘制代码，用户更新到含此修复的版本前，PDF 课件的导读可能显示"按旧图生成"。新增 `docs/ARCHITECTURE.md`（系统结构与关键机制）。
 3. 参考文献"原件已变更"措辞和 PDF 文字层少页的检查：用户已要求做（2026-11-24），发版前被打断，尚未开始改动。
 
 ## 接手提示（2026-11-24）

@@ -74,6 +74,9 @@
 
 - 规则在 `lib/workflow.mjs`，前端 `web/src/lib/classroom.ts`、`deepdive.ts` 必须一致。
 - 课件区分"原件已变更"（`sourceChanged`）和"材料有变化"（`stale`）。
+- **讲稿只跟随自己的字幕**（2026-11-24）：字幕是讲课内容的唯一来源，课件和文献只用来校对术语（`skills/class_script.md`）。只有本节字幕被更换（`outputRevision!==revision`）才算过时；材料变化不算。
+- **Deep Dive 跟随它读过的材料内容**：本周材料的"课程上下文"读什么（课件每页原文、画面描述、讲者备注、疑点和课程大纲；文献的识别文字；课程介绍）由 `lib/material-inputs.mjs` 算成每份材料的指纹，存在 `project.json` 的 `materialInputs`（材料计数 `materialRevision` 变化后，打开本周或发布结果时重算，不调用模型）。讲稿、本节 Deep Dive、整周 Deep Dive 生成时记下当时的指纹；之后只有指纹真的变了才算过时，界面说出是哪份材料（`materialChanges`）。只重新翻译或解读课件不改变指纹。
+- 没有记下指纹的旧结果仍按材料计数判断；课件导读的上下文文字由 `learningNote` 生成，`lib/study.mjs` 与指纹共用，改上下文内容时两边自然一致。
 - 导读是否"按旧图生成"见第 2 节的 `sameImages`。
 
 ## 8. 前端约定

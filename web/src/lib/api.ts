@@ -26,16 +26,18 @@ export interface PartialResults{source:string;role:string;requiresComplete:boole
  pending?:{page:number;parts:string[];draft?:{blocks:{original:string;chinese?:string}[];visuals:{description:string}[];explanation?:string;uncertainties:string[]}|null;diagnostic?:{stage:string;error:string;response:string}|null}[];
  provenance?:({model?:string}|null)[];}
 export interface SessionAudio{fileId:string;srtId:string|null;srtHash:string|null;offsetMs:number;}
-export interface AnalysisMeta{generation?:string;generated?:string;materialRevision?:number;scriptGeneration?:string;outputRevision?:number;centralQuestion?:string;citationIssues?:unknown[];}
-export interface Session{id:string;type:'Lecture'|'Seminar'|'Other'|string;title:string;date?:string;revision:number;srtId?:string;generation?:string;generated?:string;materialRevision?:number;outputRevision?:number;analysis?:AnalysisMeta;artifactStatus?:{script?:string;deepDive?:string};analysisError?:string;audio?:SessionAudio;}
+/** Fingerprints of what the course context read from each material (lib/material-inputs.mjs). */
+export type MaterialInputs=Record<string,{name:string;role:string;hash:string}>;
+export interface AnalysisMeta{materialInputs?:MaterialInputs;generation?:string;generated?:string;materialRevision?:number;scriptGeneration?:string;outputRevision?:number;centralQuestion?:string;citationIssues?:unknown[];}
+export interface Session{id:string;type:'Lecture'|'Seminar'|'Other'|string;title:string;date?:string;revision:number;srtId?:string;generation?:string;generated?:string;materialRevision?:number;materialInputs?:MaterialInputs;outputRevision?:number;analysis?:AnalysisMeta;artifactStatus?:{script?:string;deepDive?:string};analysisError?:string;audio?:SessionAudio;}
 export interface TranscriptParagraph{id:string;chapter:string;speaker:'Lecturer'|'Student'|'Unclear speaker';startMs:number;endMs:number;cueIds:number[];english:string;chinese:string;corrections:string[];}
 export interface TranscriptAudio extends SessionAudio{name:string;url:string;matched:boolean;}
 export type Transcript={available:false;message:string}|{available:true;sessionId:string;srtId:string;paragraphs:TranscriptParagraph[];contentAudit?:{segmentIndex:number;issues:string[]}[];legacy:boolean;audio:TranscriptAudio|null};
 export interface ChatMessage{role:'user'|'assistant';text:string;scope:string;focus:unknown;contextLabel?:string;at:string;requestId?:string;}
 export interface ProjectSummary{id:string;name:string;status?:string;stage?:string;error?:string;tasks?:Record<string,Task>;}
 export interface SessionInput{id:string;revision:number;generation?:string|null;}
-export interface Weekly{generation?:string;generated?:string;materialRevision?:number;selectedSessionIds?:string[];availableSessionIds?:string[];knownSessionIds?:string[];sessionInputs?:SessionInput[];pendingSessionInputs?:SessionInput[];analysis?:AnalysisMeta;}
-export interface Project extends ProjectSummary{materialRevision?:number;weekly?:Weekly|null;bbText?:string;
+export interface Weekly{materialInputs?:MaterialInputs;generation?:string;generated?:string;materialRevision?:number;selectedSessionIds?:string[];availableSessionIds?:string[];knownSessionIds?:string[];sessionInputs?:SessionInput[];pendingSessionInputs?:SessionInput[];analysis?:AnalysisMeta;}
+export interface Project extends ProjectSummary{materialRevision?:number;materialInputs?:{revision:number;sources:MaterialInputs};weekly?:Weekly|null;bbText?:string;
  deletionPending?:{sessionId:string;summary?:SessionDeletePlan}|null;materialDeletionPending?:({sourceId:string}&Partial<MaterialDeletePlan>)|null;weekDeletionPending?:boolean;
  lastUpload?:{kind:'reused'|'renamed'|'stored'|string;name:string;requestedName?:string};files:SourceFile[];sessions:Session[];chat?:ChatMessage[];job?:{mode:string;sessionId?:string;sourceId?:string};}
 export interface InteractiveJob{id:string;status:string;stage?:string;message?:string;}
