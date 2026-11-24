@@ -13,7 +13,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 test('legacy project migration preserves original file paths, generation, speaker coverage and chat',()=>{
  const old={revision:4,outputRevision:4,generation:'original-generation',files:[{id:'srt1',stored:'original.srt',role:'srt'}],coverage:{cues:2},chat:[{text:'old'}]};
  const p=migrateWeek(old);assert.equal(p.sessions[0].generation,'original-generation');assert.equal(p.sessions[0].srtId,'srt1');assert.equal(p.files[0].stored,'original.srt');assert.equal(p.chat[0].text,'old');assert.equal(stale(p,'srt1'),false);assert.equal(migrateWeek(p).sessions.length,1);
- const s=addSession(p,{type:'Seminar'});assert.equal(stale(p,'srt1'),false);assert.equal(stale(p,s.id),true);p.materialRevision++;assert.equal(stale(p,'srt1'),true);
+ const s=addSession(p,{type:'Seminar'});assert.equal(stale(p,'srt1'),false);assert.equal(stale(p,s.id),true);p.materialRevision++;assert.equal(stale(p,'srt1'),false,'a lecture script follows only its subtitles (2026-11-24)');p.sessions[0].revision++;assert.equal(stale(p,'srt1'),true,'replaced subtitles');
 });
 
 test('preparation without SRT, shared materials across two sessions, scoped QA, latest-only outputs and interrupted synthesis',async()=>{
