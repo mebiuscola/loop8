@@ -20,6 +20,21 @@
 1. 开发流程整理（2026-11-24，已并入 `main`，未推送）：`.gitattributes` 统一换行符为 LF；`scripts/test-server.mjs` 启动测试副本（不自动连 Antigravity、不自动启动 PowerPoint）；接受 `localhost`；ACP 登录测试按时间等待；`AGENTS.md` 写入隐私文件和注意事项。
 2. 参考文献"原件已变更"措辞和 PDF 文字层少页的检查：用户已要求做（2026-11-24），发版前被打断，尚未开始改动。
 
+## 接手提示（2026-11-24）
+
+**两项被打断的任务从哪里开始：**
+
+- 参考文献"原件已变更"措辞：状态文字来自 `web/src/lib/reading.ts` 的 `referenceStatus`，只看 `reader.stale`；它在 `lib/reference-study.mjs` 的 `referenceProgress` 里算出。课件的同类问题已区分 `sourceChanged`（原件本身变了）和 `stale`（其他材料变了），可照这个做法改。
+- PDF 文字层少约 18% 页面：还没看代码，从 `lib/pdf-text.mjs`（参考文献文字层解析）入手。
+
+**容易被误改回去的设计：**
+
+- PowerPoint 同时导出的 PDF 只用来核对页数和读取文字，不用于显示；不要给 PPT/PPTX 加回"PDF 预览"显示方式。
+- "文字可能超出页面""缺少课件字体"是内置近似绘制对自己画法的检查，只在近似绘制时显示（`lib/doubts.mjs` 的 `exactPages`），不是课件本身的问题。
+- Antigravity 的思考强度按模型分别读取，存在浏览器本地缓存（`web/src/lib/settings.svelte.ts` 的 `accountModels`），不在服务器设置里；换浏览器或清缓存后要重新点"刷新可用模型"，不是丢了。
+
+**测试数据：** Claude Code 的测试副本数据在它自己的临时文件夹里，其他助手用不到；请用 `scripts/test-server.mjs --fresh` 自己建一份。
+
 ## 待办（用户提过、还没做）
 
 - 参考文献"原件已变更"的提示措辞（课件的同类问题已在 2.29.0 修复）。
